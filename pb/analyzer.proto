@@ -1,0 +1,37 @@
+syntax = "proto3";
+
+package main;
+
+option go_package = "./pb";
+
+message LogInstance {
+  string service = 1;
+  string serviceId = 2;
+  string log = 3;
+}
+
+message LogPacket {
+  repeated LogInstance recent = 1;
+  repeated LogInstance history = 2;
+}
+
+enum ParseMode {
+  Parsed = 0;
+  Unparsed = 1;
+}
+
+message AnalyzerRequest {
+  LogPacket logs = 1;
+  ParseMode parseMode = 2;
+}
+
+message AnalyzerResponse {
+  uint32 rating = 1;
+  string review = 2;
+  string insight = 3;
+  string citation = 4;
+}
+
+service Analyzer {
+  rpc analyzeLog(stream AnalyzerRequest) returns (stream AnalyzerResponse) {}
+}

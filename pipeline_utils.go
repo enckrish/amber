@@ -4,13 +4,21 @@ import (
 	"fmt"
 	"github.com/google/uuid"
 	"github.com/nxadm/tail"
+	"sync"
 	"time"
 )
 
-// TODO should support combined logs from many sources at once, to find connected issues
+type LogInstance struct {
+	Service   string
+	ServiceId uuid.UUID
+	Log       string
+}
+
+type BufferItem = LogInstance
 
 type Buffer struct {
-	list []string
+	sync.RWMutex
+	list []BufferItem
 	// Index to push new items at
 	head int
 	// Number of items currently in buffer
@@ -22,17 +30,17 @@ type Buffer struct {
 }
 
 func NewBuffer(size int, nsTimeout time.Duration) *Buffer {
-	return &Buffer{list: make([]string, size), nsTimeout: nsTimeout}
+	return &Buffer{list: make([]BufferItem, size), nsTimeout: nsTimeout}
 }
 
-func (a *Buffer) Insert(entry string) {
+func (a *Buffer) Insert(entry BufferItem) {
 	a.list[a.head] = entry
 	a.head = ClIncr(a.head, len(a.list))
 	a.len = Min(a.len+1, len(a.list))
 	a.lastInsert = time.Now()
 }
 
-func (a *Buffer) InsertMultiple(entries []string) {
+func (a *Buffer) InsertMultiple(entries []BufferItem) {
 	for _, entry := range entries {
 		a.Insert(entry)
 	}
@@ -51,13 +59,8 @@ func (a *Buffer) IsTimeout() bool {
 
 // Flush Returns all elements stored in the current iteration
 // and resets head, len to 0. Flush doesn't remove any elements
-func (a *Buffer) Flush() []string {
-	f := make([]string, a.len)
-	j := ClDecr(a.head, len(a.list))
-	for i := a.len - 1; i >= 0; i-- {
-		f[i] = a.list[j]
-		j = ClDecr(j, len(a.list))
-	}
+func (a *Buffer) Flush() []BufferItem {
+	f := a.GetContentSeq()
 
 	a.head = 0
 	a.len = 0
@@ -65,70 +68,110 @@ func (a *Buffer) Flush() []string {
 	return f
 }
 
+func (a *Buffer) GetContentSeq() []BufferItem {
+	f := make([]BufferItem, a.len)
+	j := ClDecr(a.head, len(a.list))
+	for i := a.len - 1; i >= 0; i-- {
+		f[i] = a.list[j]
+		j = ClDecr(j, len(a.list))
+	}
+
+	return f
+}
+
+type ParseMode int32
+
+const (
+	Parsed ParseMode = iota
+	Unparsed
+)
+
 type PipelineConfig struct {
-	service     string
-	serviceId   uuid.UUID
-	ParserFn    TParserFn
-	format      string
-	logFilePath string
-	analyzer    string
-	buffer      *Buffer
-	history     *Buffer
+	services   []string
+	parseMode  ParseMode
+	serviceIds []uuid.UUID
+	streams    []*tail.Tail
+	buffer     *Buffer
+	history    *Buffer
 }
 
 // NewPipelineConfig
 // @parserArg0: Refers to pluginPath instead of format, if usePlugin is enabled
-func NewPipelineConfig(service string, usePlugin bool, parserArg0, logFilePath string, bufferSize, historySize int, bufferTimeout time.Duration) (PipelineConfig, error) {
-	var parserFn TParserFn
-	var err error
-	format := parserArg0
-	if usePlugin {
-		parserFn, err = GetPluginParser(parserArg0)
-		format = ""
-	} else {
-		parserFn = ParseLog
+func NewPipelineConfig(services []string, logPaths []string, parseMode ParseMode, bufferSize int, historySize int, bufferTimeout time.Duration) (*PipelineConfig, error) {
+	numServices := len(services)
+
+	serviceIds := make([]uuid.UUID, numServices)
+	for i, _ := range serviceIds {
+		serviceIds[i] = uuid.New()
 	}
 
-	if err != nil {
-		return PipelineConfig{}, err
+	streams := make([]*tail.Tail, numServices)
+	for i, _ := range streams {
+		t, err := tail.TailFile(logPaths[i], tail.Config{Follow: true, ReOpen: false})
+		if err != nil {
+			return nil, err
+		}
+		streams[i] = t
 	}
 
 	buffer := NewBuffer(bufferSize, bufferTimeout)
 	history := NewBuffer(historySize, 0)
-	return PipelineConfig{
-		service:     service,
-		serviceId:   uuid.New(),
-		ParserFn:    parserFn,
-		format:      format,
-		logFilePath: logFilePath,
-		analyzer:    "",
-		buffer:      buffer,
-		history:     history,
+
+	return &PipelineConfig{
+		services:   services,
+		parseMode:  parseMode,
+		serviceIds: serviceIds,
+		streams:    streams,
+		buffer:     buffer,
+		history:    history,
 	}, nil
 }
 
-func (p PipelineConfig) Exec() error {
-	// TODO Multithreading should start from here
+func (p *PipelineConfig) Exec() {
+	wg := sync.WaitGroup{}
 
-	t, err := tail.TailFile(p.logFilePath, tail.Config{Follow: true, ReOpen: false})
-	if err != nil {
-		return err
+	np := len(p.services)
+	wg.Add(np)
+
+	for i := 0; i < np; i++ {
+		go p.execStream(i, &wg)
 	}
-	for line := range t.Lines {
-		res, err := p.ParserFn(p.format, line.Text)
-		if err != nil {
-			return err
-		}
-		fmt.Println(res)
 
-		p.buffer.Insert(res)
-		if p.buffer.IsFull() || p.buffer.IsTimeout() {
-			// Ideally IsTimeout should be triggered even without new line
-			list := p.buffer.Flush()
-			fmt.Println("Buffer Flush:", list)
+	wg.Wait()
+}
+
+func (p *PipelineConfig) execStream(id int, wg *sync.WaitGroup) {
+	defer wg.Done()
+
+	// Read operations on local ids only
+	t := p.streams[id]
+	service := p.services[id]
+	serviceId := p.serviceIds[id]
+	// Except p.buffer and p.history, no other members are accessed after this point
+	buffer := p.buffer
+	history := p.history
+	for line := range t.Lines {
+		it := BufferItem{Service: service, Log: line.Text, ServiceId: serviceId}
+
+		buffer.Lock()
+		history.Lock()
+
+		buffer.Insert(it)
+
+		// Allowing concurrent reads might cause double-flushing
+		if buffer.IsFull() || buffer.IsTimeout() {
+			// TODO IsTimeout should be triggered even without new line
+			flBuffer := buffer.Flush()
+			flHistory := history.GetContentSeq()
+			history.InsertMultiple(flBuffer)
+			fmt.Println("Buffer Flush:", flBuffer, "History:", flHistory)
+
 			// TODO send to analyzer
 		}
+		history.Unlock()
+		buffer.Unlock()
 	}
-
-	return nil
 }
+
+// TODO check that slice refs are not returned where not wanted
+// TODO check that buffer and history load-unload is valid (fn execStream)
