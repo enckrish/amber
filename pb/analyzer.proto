@@ -4,15 +4,14 @@ package main;
 
 option go_package = "./pb";
 
-message LogInstance {
-  string service = 1;
-  string serviceId = 2;
-  string log = 3;
+message UUID {
+  string id = 1;
 }
 
-message LogPacket {
-  repeated LogInstance recent = 1;
-  repeated LogInstance history = 2;
+message LogInstance {
+  UUID id = 1;
+  string servName = 2;
+  string log = 3;
 }
 
 enum ParseMode {
@@ -20,16 +19,23 @@ enum ParseMode {
   Unparsed = 1;
 }
 
+// Possible improvements:
+// 1. Send a init message, with pipeline id, and for that pipeline id, the id->serviceName mapping, and parseMode
+// 2. Server saves that data, thus reducing bandwidth reqs for each message
+
 message AnalyzerRequest {
-  LogPacket logs = 1;
+  UUID id = 1;
   ParseMode parseMode = 2;
+  repeated LogInstance recent = 3;
+  repeated LogInstance history = 4;
 }
 
 message AnalyzerResponse {
-  uint32 rating = 1;
-  string review = 2;
-  string insight = 3;
-  string citation = 4;
+  UUID id = 1;
+  uint32 rating = 2;
+  string review = 3;
+  string insight = 4;
+  string citation = 5;
 }
 
 service Analyzer {

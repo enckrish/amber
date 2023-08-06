@@ -1,6 +1,7 @@
 package main
 
 import (
+	"amber/pb"
 	"fmt"
 	"github.com/google/uuid"
 	"github.com/nxadm/tail"
@@ -8,13 +9,10 @@ import (
 	"time"
 )
 
-type LogInstance struct {
-	Service   string
-	ServiceId uuid.UUID
-	Log       string
-}
+type BufferItemUnref = pb.LogInstance
+type BufferItem = *BufferItemUnref
 
-type BufferItem = LogInstance
+// TODO Modify BufferItem to be a generic argument of Buffer
 
 type Buffer struct {
 	sync.RWMutex
@@ -23,7 +21,7 @@ type Buffer struct {
 	head int
 	// Number of items currently in buffer
 	len int
-	// Last time item is inserted in the buffer
+	// Timestamp of last insert operation
 	lastInsert time.Time
 	// Used to detect buffer timeout
 	nsTimeout time.Duration
@@ -33,145 +31,78 @@ func NewBuffer(size int, nsTimeout time.Duration) *Buffer {
 	return &Buffer{list: make([]BufferItem, size), nsTimeout: nsTimeout}
 }
 
-func (a *Buffer) Insert(entry BufferItem) {
-	a.list[a.head] = entry
-	a.head = ClIncr(a.head, len(a.list))
-	a.len = Min(a.len+1, len(a.list))
-	a.lastInsert = time.Now()
+func (b *Buffer) Insert(entry BufferItem) {
+	b.list[b.head] = entry
+	b.head = ClIncr(b.head, len(b.list))
+	b.len = Min(b.len+1, len(b.list))
+	b.lastInsert = time.Now()
 }
 
-func (a *Buffer) InsertMultiple(entries []BufferItem) {
+func (b *Buffer) InsertMultiple(entries []BufferItem) {
 	for _, entry := range entries {
-		a.Insert(entry)
+		b.Insert(entry)
 	}
-}
-
-func (a *Buffer) IsFull() bool {
-	return a.len == len(a.list)
-}
-
-func (a *Buffer) IsTimeout() bool {
-	if a.len == 0 {
-		return false
-	}
-	return time.Now().Sub(a.lastInsert) > a.nsTimeout
 }
 
 // Flush Returns all elements stored in the current iteration
 // and resets head, len to 0. Flush doesn't remove any elements
-func (a *Buffer) Flush() []BufferItem {
-	f := a.GetContentSeq()
-
-	a.head = 0
-	a.len = 0
+func (b *Buffer) Flush() []BufferItem {
+	f := b.GetContentSeq()
+	b.SoftReset()
 
 	return f
 }
 
-func (a *Buffer) GetContentSeq() []BufferItem {
-	f := make([]BufferItem, a.len)
-	j := ClDecr(a.head, len(a.list))
-	for i := a.len - 1; i >= 0; i-- {
-		f[i] = a.list[j]
-		j = ClDecr(j, len(a.list))
+// SoftReset Resets head and len
+func (b *Buffer) SoftReset() {
+	b.head = 0
+	b.len = 0
+}
+
+func (b *Buffer) IsFull() bool {
+	return b.len == len(b.list)
+}
+
+func (b *Buffer) IsTimeout() bool {
+	if b.len == 0 {
+		return false
+	}
+	return time.Now().Sub(b.lastInsert) > b.nsTimeout
+}
+
+func (b *Buffer) GetContentSeq() []BufferItem {
+	f := make([]BufferItem, b.len)
+	// j starts from b.head-1 and decrements upto b.len iterations
+	j := ClDecr(b.head, len(b.list))
+	for i := b.len - 1; i >= 0; i-- {
+		f[i] = b.list[j]
+		j = ClDecr(j, len(b.list))
 	}
 
 	return f
 }
 
-type ParseMode int32
-
-const (
-	Parsed ParseMode = iota
-	Unparsed
-)
-
-type PipelineConfig struct {
-	services   []string
-	parseMode  ParseMode
-	serviceIds []uuid.UUID
-	streams    []*tail.Tail
-	buffer     *Buffer
-	history    *Buffer
+type Service struct {
+	// Name of the log-producing service (Docker, nginx etc.)
+	name string
+	// UUID generated automatically for the service
+	id uuid.UUID
+	// File stream for the log file
+	stream *tail.Tail
 }
 
-// NewPipelineConfig
-// @parserArg0: Refers to pluginPath instead of format, if usePlugin is enabled
-func NewPipelineConfig(services []string, logPaths []string, parseMode ParseMode, bufferSize int, historySize int, bufferTimeout time.Duration) (*PipelineConfig, error) {
-	numServices := len(services)
-
-	serviceIds := make([]uuid.UUID, numServices)
-	for i, _ := range serviceIds {
-		serviceIds[i] = uuid.New()
+func NewService(name string, logPath string) (Service, error) {
+	t, err := tail.TailFile(logPath, tail.Config{Follow: true, ReOpen: true})
+	if err != nil {
+		return Service{}, err
 	}
 
-	streams := make([]*tail.Tail, numServices)
-	for i, _ := range streams {
-		t, err := tail.TailFile(logPaths[i], tail.Config{Follow: true, ReOpen: false})
-		if err != nil {
-			return nil, err
-		}
-		streams[i] = t
-	}
-
-	buffer := NewBuffer(bufferSize, bufferTimeout)
-	history := NewBuffer(historySize, 0)
-
-	return &PipelineConfig{
-		services:   services,
-		parseMode:  parseMode,
-		serviceIds: serviceIds,
-		streams:    streams,
-		buffer:     buffer,
-		history:    history,
-	}, nil
+	return Service{name: name, id: uuid.New(), stream: t}, nil
 }
 
-func (p *PipelineConfig) Exec() {
-	wg := sync.WaitGroup{}
-
-	np := len(p.services)
-	wg.Add(np)
-
-	for i := 0; i < np; i++ {
-		go p.execStream(i, &wg)
-	}
-
-	wg.Wait()
-}
-
-func (p *PipelineConfig) execStream(id int, wg *sync.WaitGroup) {
-	defer wg.Done()
-
-	// Read operations on local ids only
-	t := p.streams[id]
-	service := p.services[id]
-	serviceId := p.serviceIds[id]
-	// Except p.buffer and p.history, no other members are accessed after this point
-	buffer := p.buffer
-	history := p.history
-	for line := range t.Lines {
-		it := BufferItem{Service: service, Log: line.Text, ServiceId: serviceId}
-
-		buffer.Lock()
-		history.Lock()
-
-		buffer.Insert(it)
-
-		// Allowing concurrent reads might cause double-flushing
-		if buffer.IsFull() || buffer.IsTimeout() {
-			// TODO IsTimeout should be triggered even without new line
-			flBuffer := buffer.Flush()
-			flHistory := history.GetContentSeq()
-			history.InsertMultiple(flBuffer)
-			fmt.Println("Buffer Flush:", flBuffer, "History:", flHistory)
-
-			// TODO send to analyzer
-		}
-		history.Unlock()
-		buffer.Unlock()
+func printBuffer(title string, item *[]BufferItem) {
+	fmt.Println(title)
+	for i, it := range *item {
+		fmt.Println(i, it)
 	}
 }
-
-// TODO check that slice refs are not returned where not wanted
-// TODO check that buffer and history load-unload is valid (fn execStream)
