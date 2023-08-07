@@ -1,7 +1,5 @@
 syntax = "proto3";
 
-package main;
-
 option go_package = "./pb";
 
 message UUID {

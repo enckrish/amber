@@ -2,6 +2,8 @@ package main
 
 import (
 	"amber/pb"
+	"context"
+	"fmt"
 	"github.com/google/uuid"
 	"sync"
 	"time"
@@ -22,6 +24,8 @@ type PipelineConfig struct {
 	ParseMode pb.ParseMode
 	buffer    *Buffer
 	history   *Buffer
+	// Stores whether server is taking any more requests
+	active bool
 }
 
 func NewPipelineConfig(
@@ -30,7 +34,7 @@ func NewPipelineConfig(
 	bufferSize int,
 	historySize int,
 	bufferTimeout time.Duration,
-) (*PipelineConfig, error) {
+) *PipelineConfig {
 	buffer := NewBuffer(bufferSize, bufferTimeout)
 	history := NewBuffer(historySize, 0)
 
@@ -40,33 +44,43 @@ func NewPipelineConfig(
 		ParseMode: parseMode,
 		buffer:    buffer,
 		history:   history,
-	}, nil
+		active:    true,
+	}
 }
 
-func (p *PipelineConfig) Exec(stream pb.Analyzer_AnalyzeLogClient) {
-	var wg sync.WaitGroup
+func (p *PipelineConfig) Exec(client pb.AnalyzerClient) {
+	stream, err := client.AnalyzeLog(context.Background())
+	if err != nil {
+		panic(err)
+	}
+	defer stream.CloseSend()
 
+	reqChannel := make(chan *pb.AnalyzerRequest)
+	go sendToStream(stream, reqChannel)
+	go receiveFromStream(stream, reqChannel, &p.active)
+
+	wg := sync.WaitGroup{}
 	np := len(p.Services)
 	wg.Add(np)
 	for _, serv := range p.Services {
-		go p.execStream(serv, stream, &wg)
+		go p.execStream(serv, reqChannel, &wg)
 	}
 
 	wg.Wait()
 }
 
-func (p *PipelineConfig) execStream(serv Service, stream pb.Analyzer_AnalyzeLogClient, wg *sync.WaitGroup) {
+func (p *PipelineConfig) execStream(serv Service, reqChannel chan *pb.AnalyzerRequest, wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	t, service, id := serv.stream, serv.name, serv.id
 	buffer, history := p.buffer, p.history
 
-	//fmt.Println("Reading", serv.name)
+	fmt.Println("Reading", serv.name)
 	for line := range t.Lines {
 		buffer.Lock()
 		history.Lock()
 
-		//fmt.Println("Line", serv.name, line.Text)
+		fmt.Println("Line", serv.name, line.Text)
 		if len(line.Text) == 0 {
 			continue
 		}
@@ -78,37 +92,32 @@ func (p *PipelineConfig) execStream(serv Service, stream pb.Analyzer_AnalyzeLogC
 		// Allowing concurrent reads might cause double-flushing
 		// TODO IsTimeout should be triggered even without new line
 		if buffer.IsFull() || buffer.IsTimeout() {
-			err := p.sendRequest(stream)
-			if err != nil {
-				// TODO retry after 5 secs?
+			if !p.active {
+				return
 			}
-
+			reqChannel <- p.getRequests()
 		}
 		history.Unlock()
 		buffer.Unlock()
 	}
 }
 
-// TODO check that buffer and history load-unload is valid (fn execStream)
-func (p *PipelineConfig) sendRequest(stream pb.Analyzer_AnalyzeLogClient) error {
-	// Don't reset heads now, that way if stream returns error, we can rollback
-	flBuffer := p.buffer.GetContentSeq()
+// TODO check that buffer and history load-unload is valid
+func (p *PipelineConfig) getRequests() *pb.AnalyzerRequest {
+	flBuffer := p.buffer.Flush()
 	flHistory := p.history.GetContentSeq()
-	{
-		//printBuffer("Buffer Flush:", &flBuffer)
-		//printBuffer("History:", &flHistory)
-	}
-	req := pb.AnalyzerRequest{
+
+	req := &pb.AnalyzerRequest{
 		Id:        &pb.UUID{Id: p.Id.String()},
 		Recent:    flBuffer,
 		History:   flHistory,
 		ParseMode: p.ParseMode,
 	}
-	if err := stream.Send(&req); err != nil {
-		return err
-	}
-
-	p.buffer.SoftReset()
 	p.history.InsertMultiple(flBuffer)
-	return nil
+
+	return req
+}
+
+func (p *PipelineConfig) isActive() bool {
+	return p.active
 }

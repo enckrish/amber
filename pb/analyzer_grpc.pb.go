@@ -34,7 +34,7 @@ func NewAnalyzerClient(cc grpc.ClientConnInterface) AnalyzerClient {
 }
 
 func (c *analyzerClient) AnalyzeLog(ctx context.Context, opts ...grpc.CallOption) (Analyzer_AnalyzeLogClient, error) {
-	stream, err := c.cc.NewStream(ctx, &Analyzer_ServiceDesc.Streams[0], "/main.Analyzer/analyzeLog", opts...)
+	stream, err := c.cc.NewStream(ctx, &Analyzer_ServiceDesc.Streams[0], "/Analyzer/analyzeLog", opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -122,7 +122,7 @@ func (x *analyzerAnalyzeLogServer) Recv() (*AnalyzerRequest, error) {
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var Analyzer_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "main.Analyzer",
+	ServiceName: "Analyzer",
 	HandlerType: (*AnalyzerServer)(nil),
 	Methods:     []grpc.MethodDesc{},
 	Streams: []grpc.StreamDesc{
