@@ -20,49 +20,52 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-type ParseMode int32
+// Before sending any requests, client has to let the server know
+// Type0 corresponds to `isolated` service logs, in future new types may be added
+// like for combined log streams
+type Type int32
 
 const (
-	ParseMode_Parsed   ParseMode = 0
-	ParseMode_Unparsed ParseMode = 1
+	Type_t0 Type = 0
+	Type_t1 Type = 1
 )
 
-// Enum value maps for ParseMode.
+// Enum value maps for Type.
 var (
-	ParseMode_name = map[int32]string{
-		0: "Parsed",
-		1: "Unparsed",
+	Type_name = map[int32]string{
+		0: "t0",
+		1: "t1",
 	}
-	ParseMode_value = map[string]int32{
-		"Parsed":   0,
-		"Unparsed": 1,
+	Type_value = map[string]int32{
+		"t0": 0,
+		"t1": 1,
 	}
 )
 
-func (x ParseMode) Enum() *ParseMode {
-	p := new(ParseMode)
+func (x Type) Enum() *Type {
+	p := new(Type)
 	*p = x
 	return p
 }
 
-func (x ParseMode) String() string {
+func (x Type) String() string {
 	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
 }
 
-func (ParseMode) Descriptor() protoreflect.EnumDescriptor {
+func (Type) Descriptor() protoreflect.EnumDescriptor {
 	return file_pb_analyzer_proto_enumTypes[0].Descriptor()
 }
 
-func (ParseMode) Type() protoreflect.EnumType {
+func (Type) Type() protoreflect.EnumType {
 	return &file_pb_analyzer_proto_enumTypes[0]
 }
 
-func (x ParseMode) Number() protoreflect.EnumNumber {
+func (x Type) Number() protoreflect.EnumNumber {
 	return protoreflect.EnumNumber(x)
 }
 
-// Deprecated: Use ParseMode.Descriptor instead.
-func (ParseMode) EnumDescriptor() ([]byte, []int) {
+// Deprecated: Use Type.Descriptor instead.
+func (Type) EnumDescriptor() ([]byte, []int) {
 	return file_pb_analyzer_proto_rawDescGZIP(), []int{0}
 }
 
@@ -113,18 +116,17 @@ func (x *UUID) GetId() string {
 	return ""
 }
 
-type LogInstance struct {
+type InitRequest_Type0 struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	Id       *UUID  `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	ServName string `protobuf:"bytes,2,opt,name=servName,proto3" json:"servName,omitempty"`
-	Log      string `protobuf:"bytes,3,opt,name=log,proto3" json:"log,omitempty"`
+	Service     string `protobuf:"bytes,1,opt,name=service,proto3" json:"service,omitempty"`
+	HistorySize uint32 `protobuf:"varint,2,opt,name=historySize,proto3" json:"historySize,omitempty"`
 }
 
-func (x *LogInstance) Reset() {
-	*x = LogInstance{}
+func (x *InitRequest_Type0) Reset() {
+	*x = InitRequest_Type0{}
 	if protoimpl.UnsafeEnabled {
 		mi := &file_pb_analyzer_proto_msgTypes[1]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -132,13 +134,13 @@ func (x *LogInstance) Reset() {
 	}
 }
 
-func (x *LogInstance) String() string {
+func (x *InitRequest_Type0) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*LogInstance) ProtoMessage() {}
+func (*InitRequest_Type0) ProtoMessage() {}
 
-func (x *LogInstance) ProtoReflect() protoreflect.Message {
+func (x *InitRequest_Type0) ProtoReflect() protoreflect.Message {
 	mi := &file_pb_analyzer_proto_msgTypes[1]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -150,45 +152,36 @@ func (x *LogInstance) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use LogInstance.ProtoReflect.Descriptor instead.
-func (*LogInstance) Descriptor() ([]byte, []int) {
+// Deprecated: Use InitRequest_Type0.ProtoReflect.Descriptor instead.
+func (*InitRequest_Type0) Descriptor() ([]byte, []int) {
 	return file_pb_analyzer_proto_rawDescGZIP(), []int{1}
 }
 
-func (x *LogInstance) GetId() *UUID {
+func (x *InitRequest_Type0) GetService() string {
 	if x != nil {
-		return x.Id
-	}
-	return nil
-}
-
-func (x *LogInstance) GetServName() string {
-	if x != nil {
-		return x.ServName
+		return x.Service
 	}
 	return ""
 }
 
-func (x *LogInstance) GetLog() string {
+func (x *InitRequest_Type0) GetHistorySize() uint32 {
 	if x != nil {
-		return x.Log
+		return x.HistorySize
 	}
-	return ""
+	return 0
 }
 
-type AnalyzerRequest struct {
+// The handling of multiple streams is left on the server
+type InitRequest_Type1 struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	Id        *UUID          `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	ParseMode ParseMode      `protobuf:"varint,2,opt,name=parseMode,proto3,enum=ParseMode" json:"parseMode,omitempty"`
-	Recent    []*LogInstance `protobuf:"bytes,3,rep,name=recent,proto3" json:"recent,omitempty"`
-	History   []*LogInstance `protobuf:"bytes,4,rep,name=history,proto3" json:"history,omitempty"`
+	Ids []*UUID `protobuf:"bytes,1,rep,name=ids,proto3" json:"ids,omitempty"`
 }
 
-func (x *AnalyzerRequest) Reset() {
-	*x = AnalyzerRequest{}
+func (x *InitRequest_Type1) Reset() {
+	*x = InitRequest_Type1{}
 	if protoimpl.UnsafeEnabled {
 		mi := &file_pb_analyzer_proto_msgTypes[2]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -196,13 +189,13 @@ func (x *AnalyzerRequest) Reset() {
 	}
 }
 
-func (x *AnalyzerRequest) String() string {
+func (x *InitRequest_Type1) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*AnalyzerRequest) ProtoMessage() {}
+func (*InitRequest_Type1) ProtoMessage() {}
 
-func (x *AnalyzerRequest) ProtoReflect() protoreflect.Message {
+func (x *InitRequest_Type1) ProtoReflect() protoreflect.Message {
 	mi := &file_pb_analyzer_proto_msgTypes[2]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -214,35 +207,165 @@ func (x *AnalyzerRequest) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use AnalyzerRequest.ProtoReflect.Descriptor instead.
-func (*AnalyzerRequest) Descriptor() ([]byte, []int) {
+// Deprecated: Use InitRequest_Type1.ProtoReflect.Descriptor instead.
+func (*InitRequest_Type1) Descriptor() ([]byte, []int) {
 	return file_pb_analyzer_proto_rawDescGZIP(), []int{2}
 }
 
-func (x *AnalyzerRequest) GetId() *UUID {
+func (x *InitRequest_Type1) GetIds() []*UUID {
+	if x != nil {
+		return x.Ids
+	}
+	return nil
+}
+
+// This same id should be sent with all messages for the registered stream
+type InitResponse_Type0 struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	Id *UUID `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+}
+
+func (x *InitResponse_Type0) Reset() {
+	*x = InitResponse_Type0{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_pb_analyzer_proto_msgTypes[3]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *InitResponse_Type0) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*InitResponse_Type0) ProtoMessage() {}
+
+func (x *InitResponse_Type0) ProtoReflect() protoreflect.Message {
+	mi := &file_pb_analyzer_proto_msgTypes[3]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use InitResponse_Type0.ProtoReflect.Descriptor instead.
+func (*InitResponse_Type0) Descriptor() ([]byte, []int) {
+	return file_pb_analyzer_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *InitResponse_Type0) GetId() *UUID {
 	if x != nil {
 		return x.Id
 	}
 	return nil
 }
 
-func (x *AnalyzerRequest) GetParseMode() ParseMode {
-	if x != nil {
-		return x.ParseMode
-	}
-	return ParseMode_Parsed
+// Contains multiple log lines from a single service
+type LogInstance_Type0 struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	Logs []string `protobuf:"bytes,1,rep,name=logs,proto3" json:"logs,omitempty"`
 }
 
-func (x *AnalyzerRequest) GetRecent() []*LogInstance {
+func (x *LogInstance_Type0) Reset() {
+	*x = LogInstance_Type0{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_pb_analyzer_proto_msgTypes[4]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *LogInstance_Type0) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*LogInstance_Type0) ProtoMessage() {}
+
+func (x *LogInstance_Type0) ProtoReflect() protoreflect.Message {
+	mi := &file_pb_analyzer_proto_msgTypes[4]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use LogInstance_Type0.ProtoReflect.Descriptor instead.
+func (*LogInstance_Type0) Descriptor() ([]byte, []int) {
+	return file_pb_analyzer_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *LogInstance_Type0) GetLogs() []string {
 	if x != nil {
-		return x.Recent
+		return x.Logs
 	}
 	return nil
 }
 
-func (x *AnalyzerRequest) GetHistory() []*LogInstance {
+type AnalyzerRequest_Type0 struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	Id   *UUID              `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Logs *LogInstance_Type0 `protobuf:"bytes,2,opt,name=logs,proto3" json:"logs,omitempty"`
+}
+
+func (x *AnalyzerRequest_Type0) Reset() {
+	*x = AnalyzerRequest_Type0{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_pb_analyzer_proto_msgTypes[5]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *AnalyzerRequest_Type0) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AnalyzerRequest_Type0) ProtoMessage() {}
+
+func (x *AnalyzerRequest_Type0) ProtoReflect() protoreflect.Message {
+	mi := &file_pb_analyzer_proto_msgTypes[5]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AnalyzerRequest_Type0.ProtoReflect.Descriptor instead.
+func (*AnalyzerRequest_Type0) Descriptor() ([]byte, []int) {
+	return file_pb_analyzer_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *AnalyzerRequest_Type0) GetId() *UUID {
 	if x != nil {
-		return x.History
+		return x.Id
+	}
+	return nil
+}
+
+func (x *AnalyzerRequest_Type0) GetLogs() *LogInstance_Type0 {
+	if x != nil {
+		return x.Logs
 	}
 	return nil
 }
@@ -252,17 +375,19 @@ type AnalyzerResponse struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	Id       *UUID  `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	Rating   uint32 `protobuf:"varint,2,opt,name=rating,proto3" json:"rating,omitempty"`
-	Review   string `protobuf:"bytes,3,opt,name=review,proto3" json:"review,omitempty"`
-	Insight  string `protobuf:"bytes,4,opt,name=insight,proto3" json:"insight,omitempty"`
-	Citation string `protobuf:"bytes,5,opt,name=citation,proto3" json:"citation,omitempty"`
+	Id              *UUID    `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Rating          uint32   `protobuf:"varint,2,opt,name=rating,proto3" json:"rating,omitempty"`
+	ActionsInsights []string `protobuf:"bytes,3,rep,name=actionsInsights,proto3" json:"actionsInsights,omitempty"`
+	Review          string   `protobuf:"bytes,4,opt,name=review,proto3" json:"review,omitempty"`
+	// Citation is a pointer to a log or a group of logs, that the model thinks to have issue
+	// It should contain the line number of line number
+	Citation uint64 `protobuf:"varint,5,opt,name=citation,proto3" json:"citation,omitempty"`
 }
 
 func (x *AnalyzerResponse) Reset() {
 	*x = AnalyzerResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_pb_analyzer_proto_msgTypes[3]
+		mi := &file_pb_analyzer_proto_msgTypes[6]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -275,7 +400,7 @@ func (x *AnalyzerResponse) String() string {
 func (*AnalyzerResponse) ProtoMessage() {}
 
 func (x *AnalyzerResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_pb_analyzer_proto_msgTypes[3]
+	mi := &file_pb_analyzer_proto_msgTypes[6]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -288,7 +413,7 @@ func (x *AnalyzerResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AnalyzerResponse.ProtoReflect.Descriptor instead.
 func (*AnalyzerResponse) Descriptor() ([]byte, []int) {
-	return file_pb_analyzer_proto_rawDescGZIP(), []int{3}
+	return file_pb_analyzer_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *AnalyzerResponse) GetId() *UUID {
@@ -305,6 +430,13 @@ func (x *AnalyzerResponse) GetRating() uint32 {
 	return 0
 }
 
+func (x *AnalyzerResponse) GetActionsInsights() []string {
+	if x != nil {
+		return x.ActionsInsights
+	}
+	return nil
+}
+
 func (x *AnalyzerResponse) GetReview() string {
 	if x != nil {
 		return x.Review
@@ -312,18 +444,96 @@ func (x *AnalyzerResponse) GetReview() string {
 	return ""
 }
 
-func (x *AnalyzerResponse) GetInsight() string {
+func (x *AnalyzerResponse) GetCitation() uint64 {
 	if x != nil {
-		return x.Insight
+		return x.Citation
+	}
+	return 0
+}
+
+type String struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	Str string `protobuf:"bytes,1,opt,name=str,proto3" json:"str,omitempty"`
+}
+
+func (x *String) Reset() {
+	*x = String{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_pb_analyzer_proto_msgTypes[7]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *String) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*String) ProtoMessage() {}
+
+func (x *String) ProtoReflect() protoreflect.Message {
+	mi := &file_pb_analyzer_proto_msgTypes[7]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use String.ProtoReflect.Descriptor instead.
+func (*String) Descriptor() ([]byte, []int) {
+	return file_pb_analyzer_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *String) GetStr() string {
+	if x != nil {
+		return x.Str
 	}
 	return ""
 }
 
-func (x *AnalyzerResponse) GetCitation() string {
-	if x != nil {
-		return x.Citation
+type Empty struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+}
+
+func (x *Empty) Reset() {
+	*x = Empty{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_pb_analyzer_proto_msgTypes[8]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
 	}
-	return ""
+}
+
+func (x *Empty) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Empty) ProtoMessage() {}
+
+func (x *Empty) ProtoReflect() protoreflect.Message {
+	mi := &file_pb_analyzer_proto_msgTypes[8]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Empty.ProtoReflect.Descriptor instead.
+func (*Empty) Descriptor() ([]byte, []int) {
+	return file_pb_analyzer_proto_rawDescGZIP(), []int{8}
 }
 
 var File_pb_analyzer_proto protoreflect.FileDescriptor
@@ -331,39 +541,52 @@ var File_pb_analyzer_proto protoreflect.FileDescriptor
 var file_pb_analyzer_proto_rawDesc = []byte{
 	0x0a, 0x11, 0x70, 0x62, 0x2f, 0x61, 0x6e, 0x61, 0x6c, 0x79, 0x7a, 0x65, 0x72, 0x2e, 0x70, 0x72,
 	0x6f, 0x74, 0x6f, 0x22, 0x16, 0x0a, 0x04, 0x55, 0x55, 0x49, 0x44, 0x12, 0x0e, 0x0a, 0x02, 0x69,
-	0x64, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x02, 0x69, 0x64, 0x22, 0x52, 0x0a, 0x0b, 0x4c,
-	0x6f, 0x67, 0x49, 0x6e, 0x73, 0x74, 0x61, 0x6e, 0x63, 0x65, 0x12, 0x15, 0x0a, 0x02, 0x69, 0x64,
-	0x18, 0x01, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x05, 0x2e, 0x55, 0x55, 0x49, 0x44, 0x52, 0x02, 0x69,
-	0x64, 0x12, 0x1a, 0x0a, 0x08, 0x73, 0x65, 0x72, 0x76, 0x4e, 0x61, 0x6d, 0x65, 0x18, 0x02, 0x20,
-	0x01, 0x28, 0x09, 0x52, 0x08, 0x73, 0x65, 0x72, 0x76, 0x4e, 0x61, 0x6d, 0x65, 0x12, 0x10, 0x0a,
-	0x03, 0x6c, 0x6f, 0x67, 0x18, 0x03, 0x20, 0x01, 0x28, 0x09, 0x52, 0x03, 0x6c, 0x6f, 0x67, 0x22,
-	0xa0, 0x01, 0x0a, 0x0f, 0x41, 0x6e, 0x61, 0x6c, 0x79, 0x7a, 0x65, 0x72, 0x52, 0x65, 0x71, 0x75,
-	0x65, 0x73, 0x74, 0x12, 0x15, 0x0a, 0x02, 0x69, 0x64, 0x18, 0x01, 0x20, 0x01, 0x28, 0x0b, 0x32,
-	0x05, 0x2e, 0x55, 0x55, 0x49, 0x44, 0x52, 0x02, 0x69, 0x64, 0x12, 0x28, 0x0a, 0x09, 0x70, 0x61,
-	0x72, 0x73, 0x65, 0x4d, 0x6f, 0x64, 0x65, 0x18, 0x02, 0x20, 0x01, 0x28, 0x0e, 0x32, 0x0a, 0x2e,
-	0x50, 0x61, 0x72, 0x73, 0x65, 0x4d, 0x6f, 0x64, 0x65, 0x52, 0x09, 0x70, 0x61, 0x72, 0x73, 0x65,
-	0x4d, 0x6f, 0x64, 0x65, 0x12, 0x24, 0x0a, 0x06, 0x72, 0x65, 0x63, 0x65, 0x6e, 0x74, 0x18, 0x03,
-	0x20, 0x03, 0x28, 0x0b, 0x32, 0x0c, 0x2e, 0x4c, 0x6f, 0x67, 0x49, 0x6e, 0x73, 0x74, 0x61, 0x6e,
-	0x63, 0x65, 0x52, 0x06, 0x72, 0x65, 0x63, 0x65, 0x6e, 0x74, 0x12, 0x26, 0x0a, 0x07, 0x68, 0x69,
-	0x73, 0x74, 0x6f, 0x72, 0x79, 0x18, 0x04, 0x20, 0x03, 0x28, 0x0b, 0x32, 0x0c, 0x2e, 0x4c, 0x6f,
-	0x67, 0x49, 0x6e, 0x73, 0x74, 0x61, 0x6e, 0x63, 0x65, 0x52, 0x07, 0x68, 0x69, 0x73, 0x74, 0x6f,
-	0x72, 0x79, 0x22, 0x8f, 0x01, 0x0a, 0x10, 0x41, 0x6e, 0x61, 0x6c, 0x79, 0x7a, 0x65, 0x72, 0x52,
-	0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x15, 0x0a, 0x02, 0x69, 0x64, 0x18, 0x01, 0x20,
-	0x01, 0x28, 0x0b, 0x32, 0x05, 0x2e, 0x55, 0x55, 0x49, 0x44, 0x52, 0x02, 0x69, 0x64, 0x12, 0x16,
-	0x0a, 0x06, 0x72, 0x61, 0x74, 0x69, 0x6e, 0x67, 0x18, 0x02, 0x20, 0x01, 0x28, 0x0d, 0x52, 0x06,
-	0x72, 0x61, 0x74, 0x69, 0x6e, 0x67, 0x12, 0x16, 0x0a, 0x06, 0x72, 0x65, 0x76, 0x69, 0x65, 0x77,
-	0x18, 0x03, 0x20, 0x01, 0x28, 0x09, 0x52, 0x06, 0x72, 0x65, 0x76, 0x69, 0x65, 0x77, 0x12, 0x18,
-	0x0a, 0x07, 0x69, 0x6e, 0x73, 0x69, 0x67, 0x68, 0x74, 0x18, 0x04, 0x20, 0x01, 0x28, 0x09, 0x52,
-	0x07, 0x69, 0x6e, 0x73, 0x69, 0x67, 0x68, 0x74, 0x12, 0x1a, 0x0a, 0x08, 0x63, 0x69, 0x74, 0x61,
-	0x74, 0x69, 0x6f, 0x6e, 0x18, 0x05, 0x20, 0x01, 0x28, 0x09, 0x52, 0x08, 0x63, 0x69, 0x74, 0x61,
-	0x74, 0x69, 0x6f, 0x6e, 0x2a, 0x25, 0x0a, 0x09, 0x50, 0x61, 0x72, 0x73, 0x65, 0x4d, 0x6f, 0x64,
-	0x65, 0x12, 0x0a, 0x0a, 0x06, 0x50, 0x61, 0x72, 0x73, 0x65, 0x64, 0x10, 0x00, 0x12, 0x0c, 0x0a,
-	0x08, 0x55, 0x6e, 0x70, 0x61, 0x72, 0x73, 0x65, 0x64, 0x10, 0x01, 0x32, 0x43, 0x0a, 0x08, 0x41,
-	0x6e, 0x61, 0x6c, 0x79, 0x7a, 0x65, 0x72, 0x12, 0x37, 0x0a, 0x0a, 0x61, 0x6e, 0x61, 0x6c, 0x79,
-	0x7a, 0x65, 0x4c, 0x6f, 0x67, 0x12, 0x10, 0x2e, 0x41, 0x6e, 0x61, 0x6c, 0x79, 0x7a, 0x65, 0x72,
-	0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x11, 0x2e, 0x41, 0x6e, 0x61, 0x6c, 0x79, 0x7a,
-	0x65, 0x72, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x00, 0x28, 0x01, 0x30, 0x01,
-	0x42, 0x06, 0x5a, 0x04, 0x2e, 0x2f, 0x70, 0x62, 0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
+	0x64, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x02, 0x69, 0x64, 0x22, 0x4f, 0x0a, 0x11, 0x49,
+	0x6e, 0x69, 0x74, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x5f, 0x54, 0x79, 0x70, 0x65, 0x30,
+	0x12, 0x18, 0x0a, 0x07, 0x73, 0x65, 0x72, 0x76, 0x69, 0x63, 0x65, 0x18, 0x01, 0x20, 0x01, 0x28,
+	0x09, 0x52, 0x07, 0x73, 0x65, 0x72, 0x76, 0x69, 0x63, 0x65, 0x12, 0x20, 0x0a, 0x0b, 0x68, 0x69,
+	0x73, 0x74, 0x6f, 0x72, 0x79, 0x53, 0x69, 0x7a, 0x65, 0x18, 0x02, 0x20, 0x01, 0x28, 0x0d, 0x52,
+	0x0b, 0x68, 0x69, 0x73, 0x74, 0x6f, 0x72, 0x79, 0x53, 0x69, 0x7a, 0x65, 0x22, 0x2c, 0x0a, 0x11,
+	0x49, 0x6e, 0x69, 0x74, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x5f, 0x54, 0x79, 0x70, 0x65,
+	0x31, 0x12, 0x17, 0x0a, 0x03, 0x69, 0x64, 0x73, 0x18, 0x01, 0x20, 0x03, 0x28, 0x0b, 0x32, 0x05,
+	0x2e, 0x55, 0x55, 0x49, 0x44, 0x52, 0x03, 0x69, 0x64, 0x73, 0x22, 0x2b, 0x0a, 0x12, 0x49, 0x6e,
+	0x69, 0x74, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x5f, 0x54, 0x79, 0x70, 0x65, 0x30,
+	0x12, 0x15, 0x0a, 0x02, 0x69, 0x64, 0x18, 0x01, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x05, 0x2e, 0x55,
+	0x55, 0x49, 0x44, 0x52, 0x02, 0x69, 0x64, 0x22, 0x27, 0x0a, 0x11, 0x4c, 0x6f, 0x67, 0x49, 0x6e,
+	0x73, 0x74, 0x61, 0x6e, 0x63, 0x65, 0x5f, 0x54, 0x79, 0x70, 0x65, 0x30, 0x12, 0x12, 0x0a, 0x04,
+	0x6c, 0x6f, 0x67, 0x73, 0x18, 0x01, 0x20, 0x03, 0x28, 0x09, 0x52, 0x04, 0x6c, 0x6f, 0x67, 0x73,
+	0x22, 0x56, 0x0a, 0x15, 0x41, 0x6e, 0x61, 0x6c, 0x79, 0x7a, 0x65, 0x72, 0x52, 0x65, 0x71, 0x75,
+	0x65, 0x73, 0x74, 0x5f, 0x54, 0x79, 0x70, 0x65, 0x30, 0x12, 0x15, 0x0a, 0x02, 0x69, 0x64, 0x18,
+	0x01, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x05, 0x2e, 0x55, 0x55, 0x49, 0x44, 0x52, 0x02, 0x69, 0x64,
+	0x12, 0x26, 0x0a, 0x04, 0x6c, 0x6f, 0x67, 0x73, 0x18, 0x02, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x12,
+	0x2e, 0x4c, 0x6f, 0x67, 0x49, 0x6e, 0x73, 0x74, 0x61, 0x6e, 0x63, 0x65, 0x5f, 0x54, 0x79, 0x70,
+	0x65, 0x30, 0x52, 0x04, 0x6c, 0x6f, 0x67, 0x73, 0x22, 0x9f, 0x01, 0x0a, 0x10, 0x41, 0x6e, 0x61,
+	0x6c, 0x79, 0x7a, 0x65, 0x72, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x15, 0x0a,
+	0x02, 0x69, 0x64, 0x18, 0x01, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x05, 0x2e, 0x55, 0x55, 0x49, 0x44,
+	0x52, 0x02, 0x69, 0x64, 0x12, 0x16, 0x0a, 0x06, 0x72, 0x61, 0x74, 0x69, 0x6e, 0x67, 0x18, 0x02,
+	0x20, 0x01, 0x28, 0x0d, 0x52, 0x06, 0x72, 0x61, 0x74, 0x69, 0x6e, 0x67, 0x12, 0x28, 0x0a, 0x0f,
+	0x61, 0x63, 0x74, 0x69, 0x6f, 0x6e, 0x73, 0x49, 0x6e, 0x73, 0x69, 0x67, 0x68, 0x74, 0x73, 0x18,
+	0x03, 0x20, 0x03, 0x28, 0x09, 0x52, 0x0f, 0x61, 0x63, 0x74, 0x69, 0x6f, 0x6e, 0x73, 0x49, 0x6e,
+	0x73, 0x69, 0x67, 0x68, 0x74, 0x73, 0x12, 0x16, 0x0a, 0x06, 0x72, 0x65, 0x76, 0x69, 0x65, 0x77,
+	0x18, 0x04, 0x20, 0x01, 0x28, 0x09, 0x52, 0x06, 0x72, 0x65, 0x76, 0x69, 0x65, 0x77, 0x12, 0x1a,
+	0x0a, 0x08, 0x63, 0x69, 0x74, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x18, 0x05, 0x20, 0x01, 0x28, 0x04,
+	0x52, 0x08, 0x63, 0x69, 0x74, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x22, 0x1a, 0x0a, 0x06, 0x53, 0x74,
+	0x72, 0x69, 0x6e, 0x67, 0x12, 0x10, 0x0a, 0x03, 0x73, 0x74, 0x72, 0x18, 0x01, 0x20, 0x01, 0x28,
+	0x09, 0x52, 0x03, 0x73, 0x74, 0x72, 0x22, 0x07, 0x0a, 0x05, 0x45, 0x6d, 0x70, 0x74, 0x79, 0x2a,
+	0x16, 0x0a, 0x04, 0x54, 0x79, 0x70, 0x65, 0x12, 0x06, 0x0a, 0x02, 0x74, 0x30, 0x10, 0x00, 0x12,
+	0x06, 0x0a, 0x02, 0x74, 0x31, 0x10, 0x01, 0x32, 0xb2, 0x01, 0x0a, 0x08, 0x41, 0x6e, 0x61, 0x6c,
+	0x79, 0x7a, 0x65, 0x72, 0x12, 0x28, 0x0a, 0x13, 0x61, 0x64, 0x6d, 0x69, 0x6e, 0x5f, 0x73, 0x65,
+	0x74, 0x50, 0x72, 0x6f, 0x6d, 0x70, 0x74, 0x54, 0x6d, 0x70, 0x6c, 0x12, 0x07, 0x2e, 0x53, 0x74,
+	0x72, 0x69, 0x6e, 0x67, 0x1a, 0x06, 0x2e, 0x45, 0x6d, 0x70, 0x74, 0x79, 0x22, 0x00, 0x12, 0x37,
+	0x0a, 0x0a, 0x69, 0x6e, 0x69, 0x74, 0x5f, 0x74, 0x79, 0x70, 0x65, 0x30, 0x12, 0x12, 0x2e, 0x49,
+	0x6e, 0x69, 0x74, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x5f, 0x54, 0x79, 0x70, 0x65, 0x30,
+	0x1a, 0x13, 0x2e, 0x49, 0x6e, 0x69, 0x74, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x5f,
+	0x54, 0x79, 0x70, 0x65, 0x30, 0x22, 0x00, 0x12, 0x43, 0x0a, 0x10, 0x61, 0x6e, 0x61, 0x6c, 0x79,
+	0x7a, 0x65, 0x4c, 0x6f, 0x67, 0x5f, 0x54, 0x79, 0x70, 0x65, 0x30, 0x12, 0x16, 0x2e, 0x41, 0x6e,
+	0x61, 0x6c, 0x79, 0x7a, 0x65, 0x72, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x5f, 0x54, 0x79,
+	0x70, 0x65, 0x30, 0x1a, 0x11, 0x2e, 0x41, 0x6e, 0x61, 0x6c, 0x79, 0x7a, 0x65, 0x72, 0x52, 0x65,
+	0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x00, 0x28, 0x01, 0x30, 0x01, 0x42, 0x06, 0x5a, 0x04,
+	0x2e, 0x2f, 0x70, 0x62, 0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
 }
 
 var (
@@ -379,28 +602,36 @@ func file_pb_analyzer_proto_rawDescGZIP() []byte {
 }
 
 var file_pb_analyzer_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_pb_analyzer_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
+var file_pb_analyzer_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
 var file_pb_analyzer_proto_goTypes = []interface{}{
-	(ParseMode)(0),           // 0: ParseMode
-	(*UUID)(nil),             // 1: UUID
-	(*LogInstance)(nil),      // 2: LogInstance
-	(*AnalyzerRequest)(nil),  // 3: AnalyzerRequest
-	(*AnalyzerResponse)(nil), // 4: AnalyzerResponse
+	(Type)(0),                     // 0: Type
+	(*UUID)(nil),                  // 1: UUID
+	(*InitRequest_Type0)(nil),     // 2: InitRequest_Type0
+	(*InitRequest_Type1)(nil),     // 3: InitRequest_Type1
+	(*InitResponse_Type0)(nil),    // 4: InitResponse_Type0
+	(*LogInstance_Type0)(nil),     // 5: LogInstance_Type0
+	(*AnalyzerRequest_Type0)(nil), // 6: AnalyzerRequest_Type0
+	(*AnalyzerResponse)(nil),      // 7: AnalyzerResponse
+	(*String)(nil),                // 8: String
+	(*Empty)(nil),                 // 9: Empty
 }
 var file_pb_analyzer_proto_depIdxs = []int32{
-	1, // 0: LogInstance.id:type_name -> UUID
-	1, // 1: AnalyzerRequest.id:type_name -> UUID
-	0, // 2: AnalyzerRequest.parseMode:type_name -> ParseMode
-	2, // 3: AnalyzerRequest.recent:type_name -> LogInstance
-	2, // 4: AnalyzerRequest.history:type_name -> LogInstance
-	1, // 5: AnalyzerResponse.id:type_name -> UUID
-	3, // 6: Analyzer.analyzeLog:input_type -> AnalyzerRequest
-	4, // 7: Analyzer.analyzeLog:output_type -> AnalyzerResponse
-	7, // [7:8] is the sub-list for method output_type
-	6, // [6:7] is the sub-list for method input_type
-	6, // [6:6] is the sub-list for extension type_name
-	6, // [6:6] is the sub-list for extension extendee
-	0, // [0:6] is the sub-list for field type_name
+	1, // 0: InitRequest_Type1.ids:type_name -> UUID
+	1, // 1: InitResponse_Type0.id:type_name -> UUID
+	1, // 2: AnalyzerRequest_Type0.id:type_name -> UUID
+	5, // 3: AnalyzerRequest_Type0.logs:type_name -> LogInstance_Type0
+	1, // 4: AnalyzerResponse.id:type_name -> UUID
+	8, // 5: Analyzer.admin_setPromptTmpl:input_type -> String
+	2, // 6: Analyzer.init_type0:input_type -> InitRequest_Type0
+	6, // 7: Analyzer.analyzeLog_Type0:input_type -> AnalyzerRequest_Type0
+	9, // 8: Analyzer.admin_setPromptTmpl:output_type -> Empty
+	4, // 9: Analyzer.init_type0:output_type -> InitResponse_Type0
+	7, // 10: Analyzer.analyzeLog_Type0:output_type -> AnalyzerResponse
+	8, // [8:11] is the sub-list for method output_type
+	5, // [5:8] is the sub-list for method input_type
+	5, // [5:5] is the sub-list for extension type_name
+	5, // [5:5] is the sub-list for extension extendee
+	0, // [0:5] is the sub-list for field type_name
 }
 
 func init() { file_pb_analyzer_proto_init() }
@@ -422,7 +653,7 @@ func file_pb_analyzer_proto_init() {
 			}
 		}
 		file_pb_analyzer_proto_msgTypes[1].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*LogInstance); i {
+			switch v := v.(*InitRequest_Type0); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -434,7 +665,7 @@ func file_pb_analyzer_proto_init() {
 			}
 		}
 		file_pb_analyzer_proto_msgTypes[2].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*AnalyzerRequest); i {
+			switch v := v.(*InitRequest_Type1); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -446,7 +677,67 @@ func file_pb_analyzer_proto_init() {
 			}
 		}
 		file_pb_analyzer_proto_msgTypes[3].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*InitResponse_Type0); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_pb_analyzer_proto_msgTypes[4].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*LogInstance_Type0); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_pb_analyzer_proto_msgTypes[5].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*AnalyzerRequest_Type0); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_pb_analyzer_proto_msgTypes[6].Exporter = func(v interface{}, i int) interface{} {
 			switch v := v.(*AnalyzerResponse); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_pb_analyzer_proto_msgTypes[7].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*String); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_pb_analyzer_proto_msgTypes[8].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*Empty); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -464,7 +755,7 @@ func file_pb_analyzer_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: file_pb_analyzer_proto_rawDesc,
 			NumEnums:      1,
-			NumMessages:   4,
+			NumMessages:   9,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

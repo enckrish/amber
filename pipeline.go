@@ -3,121 +3,165 @@ package main
 import (
 	"amber/pb"
 	"context"
-	"fmt"
-	"github.com/google/uuid"
-	"sync"
+	"log"
 	"time"
 )
+
+const streamPushRetryErr = "Failed to send logs to server. Retrying..."
+const maxRetryErr = "Maximum retries exhausted! No new attempts will be made for this stream"
+const activeFalseMsg = "Stream is set to inactive"
+const sendingLogMsg = "Sending logs for analysis"
 
 // PipelineConfig
 //
 // Stores parameters for executing analysis of live streams
 // Should only be initialized using NewPipelineConfig
-//
-// PipelineConfig.buffer and PipelineConfig.history may exchange references:
-// their contents should not be updated outside PipelineConfig methods
 type PipelineConfig struct {
 	// Stream identifier for use at analyzer
-	Id       uuid.UUID
-	Services []Service
-	// Sets whether log will be parsed before analysis or passed as it is
-	ParseMode pb.ParseMode
-	buffer    *Buffer
-	history   *Buffer
+	id      *pb.UUID
+	service *Service
 	// Stores whether server is taking any more requests
-	active bool
+	active        bool
+	buffer        *Buffer[string]
+	retries       int32
+	watchInterval time.Duration
+}
+
+func (p *PipelineConfig) Id() *pb.UUID {
+	return p.id
+}
+
+func (p *PipelineConfig) Service() Service {
+	return Service{name: p.service.name, id: pb.UUID{Id: p.service.id.Id}, stream: nil}
+}
+
+func (p *PipelineConfig) Active() bool {
+	return p.active
+}
+
+func (p *PipelineConfig) WatchInterval() time.Duration {
+	return p.watchInterval
 }
 
 func NewPipelineConfig(
-	services []Service,
-	parseMode pb.ParseMode,
+	connector *GRPCConnector,
+	service *Service,
 	bufferSize int,
-	historySize int,
+	historySize uint32,
 	bufferTimeout time.Duration,
-) *PipelineConfig {
-	buffer := NewBuffer(bufferSize, bufferTimeout)
-	history := NewBuffer(historySize, 0)
+) (*PipelineConfig, error) {
+	buffer := NewBuffer[string](bufferSize, bufferTimeout)
+
+	id, err := connector.sendInitRequestType0(service.name, historySize)
+	if err != nil {
+		return nil, err
+	}
 
 	return &PipelineConfig{
-		Id:        uuid.New(),
-		Services:  services,
-		ParseMode: parseMode,
-		buffer:    buffer,
-		history:   history,
-		active:    true,
-	}
+		id:            id,
+		service:       service,
+		buffer:        buffer,
+		active:        true,
+		watchInterval: bufferTimeout / 2,
+	}, nil
 }
 
-func (p *PipelineConfig) Exec(client pb.AnalyzerClient) {
-	stream, err := client.AnalyzeLog(context.Background())
+func (p *PipelineConfig) Exec(client pb.AnalyzerClient) error {
+	// TODO auth context
+	stream, err := client.AnalyzeLog_Type0(context.Background())
 	if err != nil {
-		panic(err)
-	}
-	defer stream.CloseSend()
-
-	reqChannel := make(chan *pb.AnalyzerRequest)
-	go sendToStream(stream, reqChannel)
-	go receiveFromStream(stream, reqChannel, &p.active)
-
-	wg := sync.WaitGroup{}
-	np := len(p.Services)
-	wg.Add(np)
-	for _, serv := range p.Services {
-		go p.execStream(serv, reqChannel, &wg)
+		return err
 	}
 
-	wg.Wait()
+	go receiveFromStream(stream, &p.active)
+	go p.watchBufferTimeout(stream)
+
+	p.execStream(p.service, stream)
+
+	return stream.CloseSend()
 }
 
-func (p *PipelineConfig) execStream(serv Service, reqChannel chan *pb.AnalyzerRequest, wg *sync.WaitGroup) {
-	defer wg.Done()
+func (p *PipelineConfig) execStream(service *Service, stream pb.Analyzer_AnalyzeLog_Type0Client) {
+	t := service.stream
+	buffer := p.buffer
 
-	t, service, id := serv.stream, serv.name, serv.id
-	buffer, history := p.buffer, p.history
-
-	fmt.Println("Reading", serv.name)
 	for line := range t.Lines {
-		buffer.Lock()
-		history.Lock()
-
-		fmt.Println("Line", serv.name, line.Text)
-		if len(line.Text) == 0 {
+		//fmt.Println(line.Text)
+		l := line.Text
+		if len(l) == 0 {
 			continue
 		}
-
-		it := &BufferItemUnref{Id: &pb.UUID{Id: id.String()}, ServName: service, Log: line.Text}
+		it := l
 		buffer.Insert(it)
-		//printBuffer("Buffer:", &buffer.list)
 
-		// Allowing concurrent reads might cause double-flushing
-		// TODO IsTimeout should be triggered even without new line
-		if buffer.IsFull() || buffer.IsTimeout() {
+		// Lock is used to guarantee concurrency with watchBufferTimeout
+		buffer.Lock()
+		if buffer.IsFull() {
 			if !p.active {
 				return
 			}
-			reqChannel <- p.getRequests()
+			if err := p.trySendToStream(stream); err != nil {
+				log.Println(streamPushRetryErr)
+			} else {
+				p.buffer.SoftReset()
+			}
 		}
-		history.Unlock()
 		buffer.Unlock()
 	}
+	log.Println(activeFalseMsg)
+	p.active = false
 }
 
-// TODO check that buffer and history load-unload is valid
-func (p *PipelineConfig) getRequests() *pb.AnalyzerRequest {
-	flBuffer := p.buffer.Flush()
-	flHistory := p.history.GetContentSeq()
+// watchBufferTimeout runs at every watchInterval, if buffer is timeout, then tries to send to stream for retries times
+// Should be always called as a goroutine.
+func (p *PipelineConfig) watchBufferTimeout(stream pb.Analyzer_AnalyzeLog_Type0Client) {
+	maxRetries := p.retries
+	for range time.Tick(p.watchInterval) {
+		if !p.buffer.IsTimeout() {
+			continue
+		}
+		if !p.active {
+			return
+		}
+		if p.retries < 0 {
+			break
+		}
+		// Lock is used to guarantee concurrency with execStream
+		p.buffer.Lock()
 
-	req := &pb.AnalyzerRequest{
-		Id:        &pb.UUID{Id: p.Id.String()},
-		Recent:    flBuffer,
-		History:   flHistory,
-		ParseMode: p.ParseMode,
+		err := p.trySendToStream(stream)
+		if err != nil {
+			log.Println(streamPushRetryErr)
+			p.retries--
+		} else {
+			p.retries = maxRetries
+			p.buffer.SoftReset()
+		}
+
+		p.buffer.Unlock()
 	}
-	p.history.InsertMultiple(flBuffer)
+	p.active = false
+	log.Println(maxRetryErr)
+	log.Println(activeFalseMsg)
+
+}
+
+// trySendToStream tries to send the buffered logs to the stream
+func (p *PipelineConfig) trySendToStream(stream pb.Analyzer_AnalyzeLog_Type0Client) error {
+	log.Println(sendingLogMsg)
+	req := p.getRequest()
+	return stream.Send(req)
+}
+
+// getRequest sends the logs in order, wrapped as pb.AnalyzerRequest_Type0
+// Does not reset the buffer state
+func (p *PipelineConfig) getRequest() *pb.AnalyzerRequest_Type0 {
+	flBuffer := p.buffer.GetContentSeq()
+
+	req := &pb.AnalyzerRequest_Type0{
+		Id:   p.id,
+		Logs: &pb.LogInstance_Type0{Logs: flBuffer},
+	}
 
 	return req
-}
-
-func (p *PipelineConfig) isActive() bool {
-	return p.active
 }

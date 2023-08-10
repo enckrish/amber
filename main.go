@@ -2,28 +2,42 @@ package main
 
 import (
 	"amber/pb"
-	"fmt"
 	"time"
 )
 
-const AnalyzerTarget = "localhost:50051"
+const analyzerTarget = "localhost:50051" // "0.tcp.in.ngrok.io:17400"
+
+const testLogService = "ABC"
+const testLogPath = "/home/krishnendu-wsl/log-tests/a.log"
+
+const testBufferSize = 3
+const testHistorySize = 10
+const testTimeout = 2 * time.Second
 
 func main() {
-	conn, client, err := getStream(AnalyzerTarget)
-	if err != nil {
-		fmt.Println("Connection error:")
-		panic(err)
-	}
-
-	services := make([]Service, 1)
-	services[0], err = NewService("S1", "/home/krishnendu-wsl/logtests/a.log")
-	//services[1], err = NewService("S2", "/home/krishnendu-wsl/logtests/b.log")
-
+	conn, err := NewGRPCConnector(analyzerTarget)
 	if err != nil {
 		panic(err)
 	}
-	p := NewPipelineConfig(services, pb.ParseMode_Unparsed, 1, 2, 10*time.Second)
-	p.Exec(client)
+	defer func(conn *GRPCConnector) {
+		err := conn.Close()
+		if err != nil {
+			panic(err)
+		}
+	}(conn)
 
-	conn.Close()
+	service, err := NewService(testLogService, testLogPath)
+	if err != nil {
+		panic(err)
+	}
+
+	p, err := NewPipelineConfig(conn, service, testBufferSize, testHistorySize, testTimeout)
+	if err != nil {
+		panic(err)
+	}
+
+	err = p.Exec(pb.NewAnalyzerClient(conn.conn))
+	if err != nil {
+		panic(err)
+	}
 }

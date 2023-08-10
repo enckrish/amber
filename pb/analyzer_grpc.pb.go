@@ -22,7 +22,9 @@ const _ = grpc.SupportPackageIsVersion7
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type AnalyzerClient interface {
-	AnalyzeLog(ctx context.Context, opts ...grpc.CallOption) (Analyzer_AnalyzeLogClient, error)
+	AdminSetPromptTmpl(ctx context.Context, in *String, opts ...grpc.CallOption) (*Empty, error)
+	InitType0(ctx context.Context, in *InitRequest_Type0, opts ...grpc.CallOption) (*InitResponse_Type0, error)
+	AnalyzeLog_Type0(ctx context.Context, opts ...grpc.CallOption) (Analyzer_AnalyzeLog_Type0Client, error)
 }
 
 type analyzerClient struct {
@@ -33,30 +35,48 @@ func NewAnalyzerClient(cc grpc.ClientConnInterface) AnalyzerClient {
 	return &analyzerClient{cc}
 }
 
-func (c *analyzerClient) AnalyzeLog(ctx context.Context, opts ...grpc.CallOption) (Analyzer_AnalyzeLogClient, error) {
-	stream, err := c.cc.NewStream(ctx, &Analyzer_ServiceDesc.Streams[0], "/Analyzer/analyzeLog", opts...)
+func (c *analyzerClient) AdminSetPromptTmpl(ctx context.Context, in *String, opts ...grpc.CallOption) (*Empty, error) {
+	out := new(Empty)
+	err := c.cc.Invoke(ctx, "/Analyzer/admin_setPromptTmpl", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
-	x := &analyzerAnalyzeLogClient{stream}
+	return out, nil
+}
+
+func (c *analyzerClient) InitType0(ctx context.Context, in *InitRequest_Type0, opts ...grpc.CallOption) (*InitResponse_Type0, error) {
+	out := new(InitResponse_Type0)
+	err := c.cc.Invoke(ctx, "/Analyzer/init_type0", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *analyzerClient) AnalyzeLog_Type0(ctx context.Context, opts ...grpc.CallOption) (Analyzer_AnalyzeLog_Type0Client, error) {
+	stream, err := c.cc.NewStream(ctx, &Analyzer_ServiceDesc.Streams[0], "/Analyzer/analyzeLog_Type0", opts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &analyzerAnalyzeLog_Type0Client{stream}
 	return x, nil
 }
 
-type Analyzer_AnalyzeLogClient interface {
-	Send(*AnalyzerRequest) error
+type Analyzer_AnalyzeLog_Type0Client interface {
+	Send(*AnalyzerRequest_Type0) error
 	Recv() (*AnalyzerResponse, error)
 	grpc.ClientStream
 }
 
-type analyzerAnalyzeLogClient struct {
+type analyzerAnalyzeLog_Type0Client struct {
 	grpc.ClientStream
 }
 
-func (x *analyzerAnalyzeLogClient) Send(m *AnalyzerRequest) error {
+func (x *analyzerAnalyzeLog_Type0Client) Send(m *AnalyzerRequest_Type0) error {
 	return x.ClientStream.SendMsg(m)
 }
 
-func (x *analyzerAnalyzeLogClient) Recv() (*AnalyzerResponse, error) {
+func (x *analyzerAnalyzeLog_Type0Client) Recv() (*AnalyzerResponse, error) {
 	m := new(AnalyzerResponse)
 	if err := x.ClientStream.RecvMsg(m); err != nil {
 		return nil, err
@@ -68,7 +88,9 @@ func (x *analyzerAnalyzeLogClient) Recv() (*AnalyzerResponse, error) {
 // All implementations must embed UnimplementedAnalyzerServer
 // for forward compatibility
 type AnalyzerServer interface {
-	AnalyzeLog(Analyzer_AnalyzeLogServer) error
+	AdminSetPromptTmpl(context.Context, *String) (*Empty, error)
+	InitType0(context.Context, *InitRequest_Type0) (*InitResponse_Type0, error)
+	AnalyzeLog_Type0(Analyzer_AnalyzeLog_Type0Server) error
 	mustEmbedUnimplementedAnalyzerServer()
 }
 
@@ -76,8 +98,14 @@ type AnalyzerServer interface {
 type UnimplementedAnalyzerServer struct {
 }
 
-func (UnimplementedAnalyzerServer) AnalyzeLog(Analyzer_AnalyzeLogServer) error {
-	return status.Errorf(codes.Unimplemented, "method AnalyzeLog not implemented")
+func (UnimplementedAnalyzerServer) AdminSetPromptTmpl(context.Context, *String) (*Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method AdminSetPromptTmpl not implemented")
+}
+func (UnimplementedAnalyzerServer) InitType0(context.Context, *InitRequest_Type0) (*InitResponse_Type0, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method InitType0 not implemented")
+}
+func (UnimplementedAnalyzerServer) AnalyzeLog_Type0(Analyzer_AnalyzeLog_Type0Server) error {
+	return status.Errorf(codes.Unimplemented, "method AnalyzeLog_Type0 not implemented")
 }
 func (UnimplementedAnalyzerServer) mustEmbedUnimplementedAnalyzerServer() {}
 
@@ -92,26 +120,62 @@ func RegisterAnalyzerServer(s grpc.ServiceRegistrar, srv AnalyzerServer) {
 	s.RegisterService(&Analyzer_ServiceDesc, srv)
 }
 
-func _Analyzer_AnalyzeLog_Handler(srv interface{}, stream grpc.ServerStream) error {
-	return srv.(AnalyzerServer).AnalyzeLog(&analyzerAnalyzeLogServer{stream})
+func _Analyzer_AdminSetPromptTmpl_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(String)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AnalyzerServer).AdminSetPromptTmpl(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/Analyzer/admin_setPromptTmpl",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AnalyzerServer).AdminSetPromptTmpl(ctx, req.(*String))
+	}
+	return interceptor(ctx, in, info, handler)
 }
 
-type Analyzer_AnalyzeLogServer interface {
+func _Analyzer_InitType0_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(InitRequest_Type0)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AnalyzerServer).InitType0(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/Analyzer/init_type0",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AnalyzerServer).InitType0(ctx, req.(*InitRequest_Type0))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Analyzer_AnalyzeLog_Type0_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(AnalyzerServer).AnalyzeLog_Type0(&analyzerAnalyzeLog_Type0Server{stream})
+}
+
+type Analyzer_AnalyzeLog_Type0Server interface {
 	Send(*AnalyzerResponse) error
-	Recv() (*AnalyzerRequest, error)
+	Recv() (*AnalyzerRequest_Type0, error)
 	grpc.ServerStream
 }
 
-type analyzerAnalyzeLogServer struct {
+type analyzerAnalyzeLog_Type0Server struct {
 	grpc.ServerStream
 }
 
-func (x *analyzerAnalyzeLogServer) Send(m *AnalyzerResponse) error {
+func (x *analyzerAnalyzeLog_Type0Server) Send(m *AnalyzerResponse) error {
 	return x.ServerStream.SendMsg(m)
 }
 
-func (x *analyzerAnalyzeLogServer) Recv() (*AnalyzerRequest, error) {
-	m := new(AnalyzerRequest)
+func (x *analyzerAnalyzeLog_Type0Server) Recv() (*AnalyzerRequest_Type0, error) {
+	m := new(AnalyzerRequest_Type0)
 	if err := x.ServerStream.RecvMsg(m); err != nil {
 		return nil, err
 	}
@@ -124,11 +188,20 @@ func (x *analyzerAnalyzeLogServer) Recv() (*AnalyzerRequest, error) {
 var Analyzer_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "Analyzer",
 	HandlerType: (*AnalyzerServer)(nil),
-	Methods:     []grpc.MethodDesc{},
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "admin_setPromptTmpl",
+			Handler:    _Analyzer_AdminSetPromptTmpl_Handler,
+		},
+		{
+			MethodName: "init_type0",
+			Handler:    _Analyzer_InitType0_Handler,
+		},
+	},
 	Streams: []grpc.StreamDesc{
 		{
-			StreamName:    "analyzeLog",
-			Handler:       _Analyzer_AnalyzeLog_Handler,
+			StreamName:    "analyzeLog_Type0",
+			Handler:       _Analyzer_AnalyzeLog_Type0_Handler,
 			ServerStreams: true,
 			ClientStreams: true,
 		},
