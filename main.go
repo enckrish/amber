@@ -36,7 +36,7 @@ func main() {
 		panic(err)
 	}
 
-	err = p.Exec(pb.NewAnalyzerClient(conn.conn))
+	err = p.Exec(pb.NewRouterClient(conn.conn))
 	if err != nil {
 		panic(err)
 	}

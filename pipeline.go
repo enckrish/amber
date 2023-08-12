@@ -66,9 +66,9 @@ func NewPipelineConfig(
 	}, nil
 }
 
-func (p *PipelineConfig) Exec(client pb.AnalyzerClient) error {
+func (p *PipelineConfig) Exec(client pb.RouterClient) error {
 	// TODO auth context
-	stream, err := client.AnalyzeLog_Type0(context.Background())
+	stream, err := client.RouteLog_Type0(context.Background())
 	if err != nil {
 		return err
 	}
@@ -81,7 +81,7 @@ func (p *PipelineConfig) Exec(client pb.AnalyzerClient) error {
 	return stream.CloseSend()
 }
 
-func (p *PipelineConfig) execStream(service *Service, stream pb.Analyzer_AnalyzeLog_Type0Client) {
+func (p *PipelineConfig) execStream(service *Service, stream pb.Router_RouteLog_Type0Client) {
 	t := service.stream
 	buffer := p.buffer
 
@@ -114,7 +114,7 @@ func (p *PipelineConfig) execStream(service *Service, stream pb.Analyzer_Analyze
 
 // watchBufferTimeout runs at every watchInterval, if buffer is timeout, then tries to send to stream for retries times
 // Should be always called as a goroutine.
-func (p *PipelineConfig) watchBufferTimeout(stream pb.Analyzer_AnalyzeLog_Type0Client) {
+func (p *PipelineConfig) watchBufferTimeout(stream pb.Router_RouteLog_Type0Client) {
 	maxRetries := p.retries
 	for range time.Tick(p.watchInterval) {
 		if !p.buffer.IsTimeout() {
@@ -147,7 +147,7 @@ func (p *PipelineConfig) watchBufferTimeout(stream pb.Analyzer_AnalyzeLog_Type0C
 }
 
 // trySendToStream tries to send the buffered logs to the stream
-func (p *PipelineConfig) trySendToStream(stream pb.Analyzer_AnalyzeLog_Type0Client) error {
+func (p *PipelineConfig) trySendToStream(stream pb.Router_RouteLog_Type0Client) error {
 	log.Println(sendingLogMsg)
 	req := p.getRequest()
 	return stream.Send(req)
