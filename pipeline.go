@@ -3,6 +3,11 @@ package main
 import (
 	"amber/pb"
 	"context"
+	"encoding/json"
+	"fmt"
+	"github.com/IBM/sarama"
+	"github.com/google/uuid"
+	orderedmap "github.com/wk8/go-ordered-map"
 	"log"
 	"time"
 )
@@ -11,45 +16,51 @@ const streamPushRetryErr = "Failed to send logs to server. Retrying..."
 const maxRetryErr = "Maximum retries exhausted! No new attempts will be made for this stream"
 const activeFalseMsg = "Stream is set to inactive"
 const sendingLogMsg = "Sending logs for analysis"
+const analysisStoreTopic = "topic.log.analysis.result.1"
 
-// PipelineConfig
+// Pipeline
 //
 // Stores parameters for executing analysis of live streams
 // Should only be initialized using NewPipelineConfig
-type PipelineConfig struct {
+type Pipeline struct {
 	// Stream identifier for use at analyzer
-	id      *pb.UUID
-	service *Service
+	streamId string
+	service  *Service
 	// Stores whether server is taking any more requests
 	active        bool
 	buffer        *Buffer[string]
 	retries       int32
 	watchInterval time.Duration
+	store         *orderedmap.OrderedMap
+	consumer      sarama.Consumer
+	onUpdateFn    func(pipeline *Pipeline)
+	// TODO add trend
 }
 
-func (p *PipelineConfig) Id() *pb.UUID {
-	return p.id
+func (p *Pipeline) Id() string {
+	return p.streamId
 }
 
-func (p *PipelineConfig) Service() Service {
-	return Service{name: p.service.name, id: pb.UUID{Id: p.service.id.Id}, stream: nil}
+func (p *Pipeline) Service() Service {
+	return Service{name: p.service.name, id: p.service.id, stream: nil}
 }
 
-func (p *PipelineConfig) Active() bool {
+func (p *Pipeline) Active() bool {
 	return p.active
 }
 
-func (p *PipelineConfig) WatchInterval() time.Duration {
+func (p *Pipeline) WatchInterval() time.Duration {
 	return p.watchInterval
 }
 
 func NewPipelineConfig(
 	connector *GRPCConnector,
+	kafkaBrokers []string,
 	service *Service,
 	bufferSize int,
 	historySize uint32,
 	bufferTimeout time.Duration,
-) (*PipelineConfig, error) {
+) (*Pipeline, error) {
 	buffer := NewBuffer[string](bufferSize, bufferTimeout)
 
 	id, err := connector.sendInitRequestType0(service.name, historySize)
@@ -57,17 +68,25 @@ func NewPipelineConfig(
 		return nil, err
 	}
 
-	return &PipelineConfig{
-		id:            id,
+	consumer, err := sarama.NewConsumer(kafkaBrokers, nil)
+	if err != nil {
+		panic(err)
+	}
+
+	return &Pipeline{
+		streamId:      id,
 		service:       service,
 		buffer:        buffer,
 		active:        true,
+		retries:       10,
 		watchInterval: bufferTimeout / 2,
+		store:         orderedmap.New(),
+		consumer:      consumer,
+		onUpdateFn:    onUpdateSample,
 	}, nil
 }
 
-func (p *PipelineConfig) Exec(client pb.RouterClient) error {
-	// TODO auth context
+func (p *Pipeline) Exec(client pb.RouterClient) error {
 	stream, err := client.RouteLog_Type0(context.Background())
 	if err != nil {
 		return err
@@ -75,13 +94,14 @@ func (p *PipelineConfig) Exec(client pb.RouterClient) error {
 
 	go receiveFromStream(stream, &p.active)
 	go p.watchBufferTimeout(stream)
+	go p.Listen(p.streamId)
 
 	p.execStream(p.service, stream)
 
 	return stream.CloseSend()
 }
 
-func (p *PipelineConfig) execStream(service *Service, stream pb.Router_RouteLog_Type0Client) {
+func (p *Pipeline) execStream(service *Service, stream pb.Router_RouteLog_Type0Client) {
 	t := service.stream
 	buffer := p.buffer
 
@@ -114,7 +134,7 @@ func (p *PipelineConfig) execStream(service *Service, stream pb.Router_RouteLog_
 
 // watchBufferTimeout runs at every watchInterval, if buffer is timeout, then tries to send to stream for retries times
 // Should be always called as a goroutine.
-func (p *PipelineConfig) watchBufferTimeout(stream pb.Router_RouteLog_Type0Client) {
+func (p *Pipeline) watchBufferTimeout(stream pb.Router_RouteLog_Type0Client) {
 	maxRetries := p.retries
 	for range time.Tick(p.watchInterval) {
 		if !p.buffer.IsTimeout() {
@@ -146,22 +166,105 @@ func (p *PipelineConfig) watchBufferTimeout(stream pb.Router_RouteLog_Type0Clien
 
 }
 
-// trySendToStream tries to send the buffered logs to the stream
-func (p *PipelineConfig) trySendToStream(stream pb.Router_RouteLog_Type0Client) error {
+// trySendToStream tries to send the buffered logsBox to the stream
+func (p *Pipeline) trySendToStream(stream pb.Router_RouteLog_Type0Client) error {
 	log.Println(sendingLogMsg)
 	req := p.getRequest()
+	p.store.Set(req.MessageId, StoreItem{
+		requestTime: time.Now(),
+		logs:        req.Logs,
+		result:      nil,
+	})
+	p.onUpdateFn(p)
 	return stream.Send(req)
 }
 
-// getRequest sends the logs in order, wrapped as pb.AnalyzerRequest_Type0
+// getRequest sends the logsBox in order, wrapped as pb.AnalyzerRequest_Type0
 // Does not reset the buffer state
-func (p *PipelineConfig) getRequest() *pb.AnalyzerRequest_Type0 {
+func (p *Pipeline) getRequest() *pb.AnalyzerRequest_Type0 {
 	flBuffer := p.buffer.GetContentSeq()
 
 	req := &pb.AnalyzerRequest_Type0{
-		Id:   p.id,
-		Logs: &pb.LogInstance_Type0{Logs: flBuffer},
+		StreamId:  p.streamId,
+		MessageId: uuid.New().String(),
+		Logs:      flBuffer,
 	}
 
 	return req
+}
+
+func (p *Pipeline) Listen(streamId string) {
+	topic := analysisStoreTopic                                   //e.g. user-created-topic
+	partitionList, _ := p.consumer.Partitions(analysisStoreTopic) //get all partitions
+	initialOffset := sarama.OffsetOldest                          //offset to start reading message from
+	for _, partition := range partitionList {
+		pc, _ := p.consumer.ConsumePartition(topic, partition, initialOffset)
+		go getMessagesOfId(pc, streamId, p.store, func() {
+			p.onUpdateFn(p)
+		})
+	}
+}
+
+func getMessagesOfId(pc sarama.PartitionConsumer, streamId string, store *orderedmap.OrderedMap, onUpdateFn func()) {
+	for msg := range pc.Messages() {
+		result := AnalysisResult{}
+		if err := json.Unmarshal(msg.Value, &result); err != nil {
+			fmt.Println(err)
+			continue
+		}
+		if result.StreamId != streamId {
+			continue
+		}
+		log.Printf("%+v\n", result)
+
+		prev, ok := store.Get(result.MessageId)
+		if !ok {
+			fmt.Println("Result available for unaccounted messageId. Skipping")
+			continue
+		}
+		p := prev.(StoreItem)
+		item := StoreItem{requestTime: p.requestTime, logs: p.logs, result: &result}
+		store.Delete(result.MessageId)
+		store.Set(result.MessageId, item)
+		onUpdateFn()
+	}
+}
+
+func (p *Pipeline) GetResultsOfMessage(messageId string) (StoreItem, bool) {
+	res, ok := p.store.Get(messageId)
+	if !ok {
+		return StoreItem{}, ok
+	}
+	return res.(StoreItem), ok
+}
+
+const v = 4
+
+func (p *Pipeline) GetUIDataOverview() [][v]string {
+	res := make([][v]string, 0)
+	for pair := p.store.Newest(); pair != nil; pair = pair.Prev() {
+		messageId := pair.Key.(string)
+		data := pair.Value.(StoreItem)
+		timestamp := data.requestTime.Round(0).String()
+		resultsFetched := data.result != nil
+		var status, severity string
+		if resultsFetched {
+			status = "DONE"
+			severity = data.result.StrRating()
+		} else {
+			status = "WAITING"
+			severity = ""
+		}
+		values := [v]string{timestamp, status, messageId, severity}
+		res = append(res, values)
+	}
+	return res
+}
+
+func onUpdateSample(p *Pipeline) {
+	//app.Draw()
+	if overviewTable != nil {
+		updateOverviewTableData(p)
+		app.Draw()
+	}
 }

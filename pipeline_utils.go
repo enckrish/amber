@@ -1,9 +1,10 @@
 package main
 
 import (
-	"amber/pb"
 	"github.com/google/uuid"
 	"github.com/nxadm/tail"
+	"path"
+	"strings"
 	"sync"
 	"time"
 )
@@ -80,16 +81,51 @@ type Service struct {
 	// Name of the log-producing service (Docker, nginx etc.)
 	name string
 	// UUID generated automatically for the service
-	id pb.UUID
+	id string
 	// File stream for the log file
 	stream *tail.Tail
 }
 
 func NewService(name string, logPath string) (*Service, error) {
+	logPath, err := handleFileType(logPath)
 	t, err := tail.TailFile(logPath, tail.Config{Follow: true, ReOpen: true})
 	if err != nil {
 		return nil, err
 	}
 
-	return &Service{name: name, id: pb.UUID{Id: uuid.New().String()}, stream: t}, nil
+	return &Service{name: name, id: uuid.New().String(), stream: t}, nil
+}
+
+func handleFileType(logPath string) (string, error) {
+	createTempFile()
+	var err error
+
+	ext := path.Ext(logPath)
+	switch strings.ToLower(ext) {
+	case ".pdf":
+		err = readPdf(logPath)
+	default:
+		return logPath, nil
+	}
+	return tempPath, err
+}
+
+type StoreItem struct {
+	requestTime time.Time
+	logs        []string
+	result      *AnalysisResult
+}
+
+type AnalysisResult struct {
+	StreamId  string   `json:"stream_id"`
+	MessageId string   `json:"message_id"`
+	Rating    int      `json:"rating"`
+	Actions   []string `json:"actions"`
+	Review    string   `json:"review"`
+	Citation  int      `json:"citation"`
+}
+
+func (a *AnalysisResult) StrRating() string {
+	ratingMap := []string{"err", "none", "low", "medium", "high", "critical"}
+	return ratingMap[a.Rating]
 }

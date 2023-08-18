@@ -17,15 +17,14 @@ type GRPCConnector struct {
 func NewGRPCConnector(target string) (*GRPCConnector, error) {
 	gc := GRPCConnector{}
 	opts := []grpc.DialOption{
-		// TODO add authentication to prevent unauthorized access to analyzer
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	}
 
-	if conn, err := grpc.Dial(target, opts...); err != nil {
+	conn, err := grpc.Dial(target, opts...)
+	if err != nil {
 		return nil, err
-	} else {
-		gc.conn = conn
 	}
+	gc.conn = conn
 
 	gc.client = pb.NewRouterClient(gc.conn)
 	return &gc, nil
@@ -35,15 +34,16 @@ func (gc *GRPCConnector) Close() error {
 	return gc.conn.Close()
 }
 
-func (gc *GRPCConnector) sendInitRequestType0(service string, historySize uint32) (*pb.UUID, error) {
+func (gc *GRPCConnector) sendInitRequestType0(service string, historySize uint32) (string, error) {
 	req := &pb.InitRequest_Type0{Service: service, HistorySize: historySize}
 	res, err := gc.client.Init_Type0(context.Background(), req)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
-	return res.Id, nil
+	return res.StreamId, nil
 }
 
+// This might cause a race condition somewhere so keep in mind
 func receiveFromStream(stream pb.Router_RouteLog_Type0Client, active *bool) {
 	for {
 		in, err := stream.Recv()

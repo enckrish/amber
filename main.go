@@ -1,43 +1,39 @@
 package main
 
 import (
-	"amber/pb"
-	"time"
+	"flag"
+	"io"
+	"log"
+	"os"
 )
 
-const analyzerTarget = "localhost:50051" // "0.tcp.in.ngrok.io:17400"
+var (
+	logPath     string
+	service     string
+	bufferSize  int
+	historySize int
+	showHelp    bool
+)
 
-const testLogService = "ABC"
-const testLogPath = "/home/krishnendu-wsl/log-tests/a.log"
-
-const testBufferSize = 3
-const testHistorySize = 10
-const testTimeout = 2 * time.Second
-
+func init() {
+	flag.StringVar(&logPath, "p", "", "path to the log file to be analyzed")
+	flag.StringVar(&service, "t", "", "name of the log producing service")
+	flag.IntVar(&bufferSize, "bs", 1, "number of log lines to read before analyzing")
+	flag.IntVar(&historySize, "hs", 1, "number of entries to keep in history for analysis context")
+	flag.BoolVar(&showHelp, "h", false, "show help")
+}
 func main() {
-	conn, err := NewGRPCConnector(analyzerTarget)
-	if err != nil {
-		panic(err)
-	}
-	defer func(conn *GRPCConnector) {
-		err := conn.Close()
-		if err != nil {
-			panic(err)
-		}
-	}(conn)
 
-	service, err := NewService(testLogService, testLogPath)
-	if err != nil {
-		panic(err)
+	flag.Parse()
+
+	if showHelp {
+		flag.Usage()
+		os.Exit(2)
 	}
 
-	p, err := NewPipelineConfig(conn, service, testBufferSize, testHistorySize, testTimeout)
-	if err != nil {
-		panic(err)
+	if logPath == "" || service == "" {
+		log.Panicln("Invalid values for `p` or `t`")
 	}
-
-	err = p.Exec(pb.NewRouterClient(conn.conn))
-	if err != nil {
-		panic(err)
-	}
+	log.SetOutput(io.Discard)
+	test(logPath, service, bufferSize, uint32(historySize))
 }
