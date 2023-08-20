@@ -33,7 +33,7 @@ type Pipeline struct {
 	watchInterval time.Duration
 	store         *orderedmap.OrderedMap
 	consumer      sarama.Consumer
-	onUpdateFn    func(pipeline *Pipeline)
+	OnUpdateFn    func(pipeline *Pipeline)
 	// TODO add trend
 }
 
@@ -65,7 +65,7 @@ func NewPipelineConfig(
 
 	id, err := connector.sendInitRequestType0(service.name, historySize)
 	if err != nil {
-		return nil, err
+		panic(err)
 	}
 
 	consumer, err := sarama.NewConsumer(kafkaBrokers, nil)
@@ -82,7 +82,7 @@ func NewPipelineConfig(
 		watchInterval: bufferTimeout / 2,
 		store:         orderedmap.New(),
 		consumer:      consumer,
-		onUpdateFn:    onUpdateSample,
+		OnUpdateFn:    onUpdateSample,
 	}, nil
 }
 
@@ -124,6 +124,8 @@ func (p *Pipeline) execStream(service *Service, stream pb.Router_RouteLog_Type0C
 				log.Println(streamPushRetryErr)
 			} else {
 				p.buffer.SoftReset()
+				// To prevent rapidly overflowing the to-router traffic
+				time.Sleep(time.Duration(0.01 * float64(time.Second)))
 			}
 		}
 		buffer.Unlock()
@@ -175,7 +177,7 @@ func (p *Pipeline) trySendToStream(stream pb.Router_RouteLog_Type0Client) error 
 		logs:        req.Logs,
 		result:      nil,
 	})
-	p.onUpdateFn(p)
+	p.OnUpdateFn(p)
 	return stream.Send(req)
 }
 
@@ -200,7 +202,7 @@ func (p *Pipeline) Listen(streamId string) {
 	for _, partition := range partitionList {
 		pc, _ := p.consumer.ConsumePartition(topic, partition, initialOffset)
 		go getMessagesOfId(pc, streamId, p.store, func() {
-			p.onUpdateFn(p)
+			p.OnUpdateFn(p)
 		})
 	}
 }
@@ -209,7 +211,7 @@ func getMessagesOfId(pc sarama.PartitionConsumer, streamId string, store *ordere
 	for msg := range pc.Messages() {
 		result := AnalysisResult{}
 		if err := json.Unmarshal(msg.Value, &result); err != nil {
-			fmt.Println(err)
+			log.Println(err)
 			continue
 		}
 		if result.StreamId != streamId {

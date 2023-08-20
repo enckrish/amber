@@ -3,8 +3,6 @@ package main
 import (
 	"github.com/google/uuid"
 	"github.com/nxadm/tail"
-	"path"
-	"strings"
 	"sync"
 	"time"
 )
@@ -87,27 +85,12 @@ type Service struct {
 }
 
 func NewService(name string, logPath string) (*Service, error) {
-	logPath, err := handleFileType(logPath)
 	t, err := tail.TailFile(logPath, tail.Config{Follow: true, ReOpen: true})
 	if err != nil {
 		return nil, err
 	}
 
 	return &Service{name: name, id: uuid.New().String(), stream: t}, nil
-}
-
-func handleFileType(logPath string) (string, error) {
-	createTempFile()
-	var err error
-
-	ext := path.Ext(logPath)
-	switch strings.ToLower(ext) {
-	case ".pdf":
-		err = readPdf(logPath)
-	default:
-		return logPath, nil
-	}
-	return tempPath, err
 }
 
 type StoreItem struct {
