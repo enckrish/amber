@@ -1,14 +1,19 @@
 # Analyzer Protocol
 
-## Setup
-Set the following values in .env file:
-```env
-MONGO_PASSWORD=
-AMBER_KAFKA_URL=
-```
-## Identifying if a logs should be analyzed
-Each analyzer should specify a `group_id` and a `self_id`. If `self_id` is not the current leader of the `group_id`, it should not perform any analysis.
-If `group_id` is not added as an intended target for the service named in the logs, it should skip the logs.
+## Database Access 
+The analyzer should contain values for:
+1. `AMBER_KAFKA_URL` which is the advertised broker for the Kafka instance where analysis requests and responses are pushed to.
+2. `MONGO_CONNECTION_STRING` or any other variant of it, which points to the MongoDB connection which contains the routing values are stored.
+
+These are suggested names, and implementations are free to choose different names or structures.
+
+## Identifying if a Log Instance Should be Analyzed
+Each analyzer must specify a `group_id` and a `self_id`. 
+`self_id` is unique to a particular analyzer.
+
+If the `group_id` is not added as an intended target for the service named in the logs, it should skip the logs.
+
+If `self_id` is not the current leader of the `group_id`, it should not perform any analysis, and optionally stop its execution.
 
 For accessing current leader and intended targets, the following MongoDB parameters are used:
 ```bash
@@ -84,4 +89,14 @@ Results should be of the form:
 4: high
 5: critical
 ```
+
+## Restoring Analyzer State After Group Leader Change
+Proper state sync between the new group leader and the previous leader guarantees proper functioning of the architecture, by preventing issues like double analyzing a log instance, or not analyzing a stream at all.
+
+The protocol doesn't dictate how the sync should be implemented. A minimal implementation is available at [enckrish/aquamarine](https://www.github.com/aquamarine) `AnalyzerServicer` where the state dict is saved using pickle after every iteration. A new leader initializes by loading the pickle-saved state dict.
+
+A better way would be to use a proper database. The author recommends a NoSQL database like MongoDB.
+
+
+
 
