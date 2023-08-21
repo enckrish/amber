@@ -1,22 +1,15 @@
 package main
 
 import (
-	"amber/pb"
-	"fmt"
 	"github.com/google/uuid"
 	"github.com/nxadm/tail"
 	"sync"
 	"time"
 )
 
-type BufferItemUnref = pb.LogInstance
-type BufferItem = *BufferItemUnref
-
-// TODO Modify BufferItem to be a generic argument of Buffer
-
-type Buffer struct {
+type Buffer[ItemType any] struct {
 	sync.RWMutex
-	list []BufferItem
+	list []ItemType
 	// Index to push new items at
 	head int
 	// Number of items currently in buffer
@@ -27,18 +20,18 @@ type Buffer struct {
 	nsTimeout time.Duration
 }
 
-func NewBuffer(size int, nsTimeout time.Duration) *Buffer {
-	return &Buffer{list: make([]BufferItem, size), nsTimeout: nsTimeout}
+func NewBuffer[ItemType any](size int, nsTimeout time.Duration) *Buffer[ItemType] {
+	return &Buffer[ItemType]{list: make([]ItemType, size), nsTimeout: nsTimeout}
 }
 
-func (b *Buffer) Insert(entry BufferItem) {
+func (b *Buffer[ItemType]) Insert(entry ItemType) {
 	b.list[b.head] = entry
 	b.head = ClIncr(b.head, len(b.list))
 	b.len = Min(b.len+1, len(b.list))
 	b.lastInsert = time.Now()
 }
 
-func (b *Buffer) InsertMultiple(entries []BufferItem) {
+func (b *Buffer[ItemType]) InsertMultiple(entries []ItemType) {
 	for _, entry := range entries {
 		b.Insert(entry)
 	}
@@ -46,7 +39,7 @@ func (b *Buffer) InsertMultiple(entries []BufferItem) {
 
 // Flush Returns all elements stored in the current iteration
 // and resets head, len to 0. Flush doesn't remove any elements
-func (b *Buffer) Flush() []BufferItem {
+func (b *Buffer[ItemType]) Flush() []ItemType {
 	f := b.GetContentSeq()
 	b.SoftReset()
 
@@ -54,24 +47,24 @@ func (b *Buffer) Flush() []BufferItem {
 }
 
 // SoftReset Resets head and len
-func (b *Buffer) SoftReset() {
+func (b *Buffer[ItemType]) SoftReset() {
 	b.head = 0
 	b.len = 0
 }
 
-func (b *Buffer) IsFull() bool {
+func (b *Buffer[ItemType]) IsFull() bool {
 	return b.len == len(b.list)
 }
 
-func (b *Buffer) IsTimeout() bool {
+func (b *Buffer[ItemType]) IsTimeout() bool {
 	if b.len == 0 {
 		return false
 	}
 	return time.Now().Sub(b.lastInsert) > b.nsTimeout
 }
 
-func (b *Buffer) GetContentSeq() []BufferItem {
-	f := make([]BufferItem, b.len)
+func (b *Buffer[ItemType]) GetContentSeq() []ItemType {
+	f := make([]ItemType, b.len)
 	// j starts from b.head-1 and decrements upto b.len iterations
 	j := ClDecr(b.head, len(b.list))
 	for i := b.len - 1; i >= 0; i-- {
@@ -86,23 +79,36 @@ type Service struct {
 	// Name of the log-producing service (Docker, nginx etc.)
 	name string
 	// UUID generated automatically for the service
-	id uuid.UUID
+	id string
 	// File stream for the log file
 	stream *tail.Tail
 }
 
-func NewService(name string, logPath string) (Service, error) {
+func NewService(name string, logPath string) (*Service, error) {
 	t, err := tail.TailFile(logPath, tail.Config{Follow: true, ReOpen: true})
 	if err != nil {
-		return Service{}, err
+		return nil, err
 	}
 
-	return Service{name: name, id: uuid.New(), stream: t}, nil
+	return &Service{name: name, id: uuid.New().String(), stream: t}, nil
 }
 
-func printBuffer(title string, item *[]BufferItem) {
-	fmt.Println(title)
-	for i, it := range *item {
-		fmt.Println(i, it)
-	}
+type StoreItem struct {
+	requestTime time.Time
+	logs        []string
+	result      *AnalysisResult
+}
+
+type AnalysisResult struct {
+	StreamId  string   `json:"stream_id"`
+	MessageId string   `json:"message_id"`
+	Rating    int      `json:"rating"`
+	Actions   []string `json:"actions"`
+	Review    string   `json:"review"`
+	Citation  int      `json:"citation"`
+}
+
+func (a *AnalysisResult) StrRating() string {
+	ratingMap := []string{"err", "none", "low", "medium", "high", "critical"}
+	return ratingMap[a.Rating]
 }

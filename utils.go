@@ -1,6 +1,6 @@
 package main
 
-// Max returns the larger of x or y.
+// Max returns the largest of x or y.
 func Max(x, y int) int {
 	if x < y {
 		return y
@@ -8,7 +8,7 @@ func Max(x, y int) int {
 	return x
 }
 
-// Min returns the smaller of x or y.
+// Min returns the smallest of x or y.
 func Min(x, y int) int {
 	if x > y {
 		return y
