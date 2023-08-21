@@ -93,7 +93,7 @@ Results should be of the form:
 ## Restoring Analyzer State After Group Leader Change
 Proper state sync between the new group leader and the previous leader guarantees proper functioning of the architecture, by preventing issues like double analyzing a log instance, or not analyzing a stream at all.
 
-The protocol doesn't dictate how the sync should be implemented. A minimal implementation is available at [enckrish/aquamarine](https://www.github.com/aquamarine) `AnalyzerServicer` where the state dict is saved using pickle after every iteration. A new leader initializes by loading the pickle-saved state dict.
+The protocol doesn't dictate how the sync should be implemented. A minimal implementation is available at [enckrish/aquamarine](https://www.github.com/enckrish/aquamarine) `AnalyzerServicer` where the state dict is saved using pickle after every iteration. A new leader initializes by loading the pickle-saved state dict.
 
 A better way would be to use a proper database. The author recommends a NoSQL database like MongoDB.
 
