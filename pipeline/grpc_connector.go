@@ -1,7 +1,7 @@
-package main
+package pipeline
 
 import (
-	"amber/pb"
+	"amber/pipeline/pb"
 	"context"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -12,6 +12,14 @@ import (
 type GRPCConnector struct {
 	conn   *grpc.ClientConn
 	client pb.RouterClient
+}
+
+func (gc *GRPCConnector) Conn() *grpc.ClientConn {
+	return gc.conn
+}
+
+func (gc *GRPCConnector) Client() pb.RouterClient {
+	return gc.client
 }
 
 func NewGRPCConnector(target string) (*GRPCConnector, error) {

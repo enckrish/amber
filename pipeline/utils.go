@@ -1,4 +1,4 @@
-package main
+package pipeline
 
 // Max returns the largest of x or y.
 func Max(x, y int) int {
