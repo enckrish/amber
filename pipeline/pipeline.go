@@ -1,7 +1,7 @@
-package main
+package pipeline
 
 import (
-	"amber/pb"
+	"amber/pipeline/pb"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -32,9 +32,13 @@ type Pipeline struct {
 	retries       int32
 	watchInterval time.Duration
 	store         *orderedmap.OrderedMap
-	consumer      sarama.Consumer
-	OnUpdateFn    func(pipeline *Pipeline)
-	// TODO add trend
+	// TODO change to consumer group
+	consumer   sarama.Consumer
+	OnUpdateFn func(pipeline *Pipeline)
+}
+
+func (p *Pipeline) Store() *orderedmap.OrderedMap {
+	return p.store
 }
 
 func (p *Pipeline) Id() string {
@@ -60,6 +64,7 @@ func NewPipelineConfig(
 	bufferSize int,
 	historySize uint32,
 	bufferTimeout time.Duration,
+	onUpdateFn func(pipeline *Pipeline),
 ) (*Pipeline, error) {
 	buffer := NewBuffer[string](bufferSize, bufferTimeout)
 
@@ -82,7 +87,7 @@ func NewPipelineConfig(
 		watchInterval: bufferTimeout / 2,
 		store:         orderedmap.New(),
 		consumer:      consumer,
-		OnUpdateFn:    onUpdateSample,
+		OnUpdateFn:    onUpdateFn,
 	}, nil
 }
 
@@ -99,6 +104,26 @@ func (p *Pipeline) Exec(client pb.RouterClient) error {
 	p.execStream(p.service, stream)
 
 	return stream.CloseSend()
+}
+
+func (p *Pipeline) Listen(streamId string) {
+	topic := analysisStoreTopic                                   //e.g. user-created-topic
+	partitionList, _ := p.consumer.Partitions(analysisStoreTopic) //get all partitions
+	initialOffset := sarama.OffsetOldest                          //offset to start reading message from
+	for _, partition := range partitionList {
+		pc, _ := p.consumer.ConsumePartition(topic, partition, initialOffset)
+		go getMessagesOfId(pc, streamId, p.store, func() {
+			p.OnUpdateFn(p)
+		})
+	}
+}
+
+func (p *Pipeline) GetResultsOfMessage(messageId string) (StoreItem, bool) {
+	res, ok := p.store.Get(messageId)
+	if !ok {
+		return StoreItem{}, ok
+	}
+	return res.(StoreItem), ok
 }
 
 func (p *Pipeline) execStream(service *Service, stream pb.Router_RouteLog_Type0Client) {
@@ -132,6 +157,33 @@ func (p *Pipeline) execStream(service *Service, stream pb.Router_RouteLog_Type0C
 	}
 	log.Println(activeFalseMsg)
 	p.active = false
+}
+
+// trySendToStream tries to send the buffered logsBox to the stream
+func (p *Pipeline) trySendToStream(stream pb.Router_RouteLog_Type0Client) error {
+	log.Println(sendingLogMsg)
+	req := p.getRequest()
+	p.store.Set(req.MessageId, StoreItem{
+		requestTime: time.Now(),
+		logs:        req.Logs,
+		result:      nil,
+	})
+	p.OnUpdateFn(p)
+	return stream.Send(req)
+}
+
+// getRequest sends the logsBox in order, wrapped as pb.AnalyzerRequest_Type0
+// Does not reset the buffer state
+func (p *Pipeline) getRequest() *pb.AnalyzerRequest_Type0 {
+	flBuffer := p.buffer.GetContentSeq()
+
+	req := &pb.AnalyzerRequest_Type0{
+		StreamId:  p.streamId,
+		MessageId: uuid.New().String(),
+		Logs:      flBuffer,
+	}
+
+	return req
 }
 
 // watchBufferTimeout runs at every watchInterval, if buffer is timeout, then tries to send to stream for retries times
@@ -168,45 +220,6 @@ func (p *Pipeline) watchBufferTimeout(stream pb.Router_RouteLog_Type0Client) {
 
 }
 
-// trySendToStream tries to send the buffered logsBox to the stream
-func (p *Pipeline) trySendToStream(stream pb.Router_RouteLog_Type0Client) error {
-	log.Println(sendingLogMsg)
-	req := p.getRequest()
-	p.store.Set(req.MessageId, StoreItem{
-		requestTime: time.Now(),
-		logs:        req.Logs,
-		result:      nil,
-	})
-	p.OnUpdateFn(p)
-	return stream.Send(req)
-}
-
-// getRequest sends the logsBox in order, wrapped as pb.AnalyzerRequest_Type0
-// Does not reset the buffer state
-func (p *Pipeline) getRequest() *pb.AnalyzerRequest_Type0 {
-	flBuffer := p.buffer.GetContentSeq()
-
-	req := &pb.AnalyzerRequest_Type0{
-		StreamId:  p.streamId,
-		MessageId: uuid.New().String(),
-		Logs:      flBuffer,
-	}
-
-	return req
-}
-
-func (p *Pipeline) Listen(streamId string) {
-	topic := analysisStoreTopic                                   //e.g. user-created-topic
-	partitionList, _ := p.consumer.Partitions(analysisStoreTopic) //get all partitions
-	initialOffset := sarama.OffsetOldest                          //offset to start reading message from
-	for _, partition := range partitionList {
-		pc, _ := p.consumer.ConsumePartition(topic, partition, initialOffset)
-		go getMessagesOfId(pc, streamId, p.store, func() {
-			p.OnUpdateFn(p)
-		})
-	}
-}
-
 func getMessagesOfId(pc sarama.PartitionConsumer, streamId string, store *orderedmap.OrderedMap, onUpdateFn func()) {
 	for msg := range pc.Messages() {
 		result := AnalysisResult{}
@@ -229,44 +242,5 @@ func getMessagesOfId(pc sarama.PartitionConsumer, streamId string, store *ordere
 		store.Delete(result.MessageId)
 		store.Set(result.MessageId, item)
 		onUpdateFn()
-	}
-}
-
-func (p *Pipeline) GetResultsOfMessage(messageId string) (StoreItem, bool) {
-	res, ok := p.store.Get(messageId)
-	if !ok {
-		return StoreItem{}, ok
-	}
-	return res.(StoreItem), ok
-}
-
-const v = 4
-
-func (p *Pipeline) GetUIDataOverview() [][v]string {
-	res := make([][v]string, 0)
-	for pair := p.store.Newest(); pair != nil; pair = pair.Prev() {
-		messageId := pair.Key.(string)
-		data := pair.Value.(StoreItem)
-		timestamp := data.requestTime.Round(0).String()
-		resultsFetched := data.result != nil
-		var status, severity string
-		if resultsFetched {
-			status = "DONE"
-			severity = data.result.StrRating()
-		} else {
-			status = "WAITING"
-			severity = ""
-		}
-		values := [v]string{timestamp, status, messageId, severity}
-		res = append(res, values)
-	}
-	return res
-}
-
-func onUpdateSample(p *Pipeline) {
-	//app.Draw()
-	if overviewTable != nil {
-		updateOverviewTableData(p)
-		app.Draw()
 	}
 }

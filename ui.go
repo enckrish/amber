@@ -1,6 +1,7 @@
 package main
 
 import (
+	"amber/pipeline"
 	"encoding/json"
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
@@ -18,7 +19,7 @@ var (
 	resultsBox    *tview.TextView
 )
 
-func runUI(p *Pipeline) {
+func runUI(p *pipeline.Pipeline) {
 	app.SetInputCapture(handleInput)
 
 	view := buildLayout(p)
@@ -28,7 +29,7 @@ func runUI(p *Pipeline) {
 	}
 }
 
-func buildLayout(p *Pipeline) tview.Primitive {
+func buildLayout(p *pipeline.Pipeline) tview.Primitive {
 	overviewTable = getOverviewTable(p)
 	overviewTable.SetBackgroundColor(tcell.ColorDefault)
 	detailView := getDetailedFlex()
@@ -61,7 +62,7 @@ func getDetailedFlex() tview.Primitive {
 	return flex
 }
 
-func getOverviewTable(p *Pipeline) *tview.Table {
+func getOverviewTable(p *pipeline.Pipeline) *tview.Table {
 	table := tview.NewTable().SetFixed(1, columnsUTable).SetSelectable(true, false)
 	table.SetDoneFunc(func(key tcell.Key) {
 		switch key {
@@ -86,7 +87,7 @@ func getOverviewTable(p *Pipeline) *tview.Table {
 	return table
 }
 
-func updateOverviewTableData(p *Pipeline) {
+func updateOverviewTableData(p *pipeline.Pipeline) {
 	headerCell := func(s string) *tview.TableCell {
 		return tview.NewTableCell(s).
 			SetBackgroundColor(tcell.ColorBlueViolet).
@@ -114,7 +115,7 @@ func updateOverviewTableData(p *Pipeline) {
 		overviewTable.SetCell(0, i, headerCell(key))
 	}
 
-	data := p.GetUIDataOverview()
+	data := getUIDataFromPipeline(p)
 	for r, values := range data {
 		severity := values[severityCol]
 		for c, v := range values {
@@ -124,24 +125,24 @@ func updateOverviewTableData(p *Pipeline) {
 	overviewTable.ScrollToBeginning()
 }
 
-func updateLogsBox(p *Pipeline) {
+func updateLogsBox(p *pipeline.Pipeline) {
 	logsBox.Clear()
 	data := getSelectionData(p)
 	cat := ""
-	for _, line := range data.logs {
+	for _, line := range data.Logs() {
 		cat += line + "\n"
 	}
 
 	logsBox.SetText(cat)
 }
 
-func updateResultsBox(p *Pipeline) {
+func updateResultsBox(p *pipeline.Pipeline) {
 	resultsBox.Clear()
 	data := getSelectionData(p)
 	if data == nil {
 		return
 	}
-	b, err := json.MarshalIndent(data.result, "", "\t")
+	b, err := json.MarshalIndent(data.Result(), "", "\t")
 	if err != nil {
 		return
 	}
@@ -155,7 +156,7 @@ func getSelectionMessageId() string {
 	return v
 }
 
-func getSelectionData(p *Pipeline) *StoreItem {
+func getSelectionData(p *pipeline.Pipeline) *pipeline.StoreItem {
 	data, ok := p.GetResultsOfMessage(getSelectionMessageId())
 	if !ok {
 		return nil
@@ -170,4 +171,33 @@ func handleInput(event *tcell.EventKey) *tcell.EventKey {
 		os.Exit(0)
 	}
 	return event
+}
+
+func onUpdateSample(p *pipeline.Pipeline) {
+	//app.Draw()
+	if overviewTable != nil {
+		updateOverviewTableData(p)
+		app.Draw()
+	}
+}
+
+func getUIDataFromPipeline(p *pipeline.Pipeline) [][4]string {
+	res := make([][4]string, 0)
+	for pair := p.Store().Newest(); pair != nil; pair = pair.Prev() {
+		messageId := pair.Key.(string)
+		data := pair.Value.(pipeline.StoreItem)
+		timestamp := data.RequestTime().Round(0).String()
+		resultsFetched := data.Result() != nil
+		var status, severity string
+		if resultsFetched {
+			status = "DONE"
+			severity = data.Result().StrRating()
+		} else {
+			status = "WAITING"
+			severity = ""
+		}
+		values := [4]string{timestamp, status, messageId, severity}
+		res = append(res, values)
+	}
+	return res
 }

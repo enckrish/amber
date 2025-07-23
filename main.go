@@ -1,7 +1,8 @@
 package main
 
 import (
-	"amber/pb"
+	"amber/pipeline"
+	"amber/pipeline/pb"
 	"flag"
 	"io"
 	"log"
@@ -12,7 +13,7 @@ import (
 )
 
 const analyzerTarget = "localhost:50051"
-const testTimeout = 2 * time.Second
+const timeout = 2 * time.Second
 
 var brokers = []string{os.Getenv("AMBER_KAFKA_URL")}
 var (
@@ -45,27 +46,27 @@ func main() {
 	log.SetOutput(io.Discard)
 	//test(logPath, service, bufferSize, uint32(historySize))
 
-	conn, err := NewGRPCConnector(analyzerTarget)
+	conn, err := pipeline.NewGRPCConnector(analyzerTarget)
 	if err != nil {
 		panic(err)
 	}
-	defer func(conn *GRPCConnector) {
+	defer func(conn *pipeline.GRPCConnector) {
 		err := conn.Close()
 		if err != nil {
 			panic(err)
 		}
 	}(conn)
 
-	service, err := NewService(service, logPath)
+	service, err := pipeline.NewService(service, logPath)
 	if err != nil {
 		panic(err)
 	}
 
-	p, err := NewPipelineConfig(conn, brokers, service, bufferSize, uint32(historySize), testTimeout)
+	p, err := pipeline.NewPipelineConfig(conn, brokers, service, bufferSize, uint32(historySize), timeout, onUpdateSample)
 	if err != nil {
 		panic(err)
 	}
 
 	go runUI(p)
-	p.Exec(pb.NewRouterClient(conn.conn))
+	p.Exec(pb.NewRouterClient(conn.Conn()))
 }
