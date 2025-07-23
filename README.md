@@ -14,3 +14,5 @@ Amber comprises 3 systems:
 The docs for using Amber can be found [here](https://github.com/enckrish/amber/blob/master/docs).
 
 Amber CLI is written in Go, using [tview](https://github.com/rivo/tview) for the terminal UI.
+
+The presentation on Amber can be found at https://drive.google.com/file/d/1l_A511ot6_os74rmG7KmtN4plHdor_do/view?usp=sharing.
