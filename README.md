@@ -1,5 +1,5 @@
 # Amber: Scalable LLM-based Log Analysis Tool
-Amber is a scalable, fault-tolerant log analysis system for use LLM analyzers.
+Amber is a scalable, fault-tolerant log analysis system for use with LLM analyzers.
 
 ## Architecture
 ![architecture](https://github.com/enckrish/amber/assets/41233911/03cd4b35-0e57-428e-96cc-daa0a2c44e28)
